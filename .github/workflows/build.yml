@@ -29,7 +29,7 @@ jobs:
           KEYSTORE_B64: ${{ secrets.LCKDN_KEYSTORE_B64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/lckdn.jks"
+            printf '%s' "$KEYSTORE_B64" | tr -d '\r\n \357\273\277' | base64 -d > "$RUNNER_TEMP/lckdn.jks"
             echo "LCKDN_KEYSTORE=$RUNNER_TEMP/lckdn.jks" >> "$GITHUB_ENV"
           else
             echo "No signing key configured; using a debug key."
