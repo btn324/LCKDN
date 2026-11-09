@@ -13,6 +13,7 @@ import androidx.core.view.isVisible
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.lckdn.app.Prefs
 import com.lckdn.app.Protection
+import com.lckdn.app.QuoteReceiver
 import com.lckdn.app.R
 
 class MainActivity : AppCompatActivity() {
@@ -70,6 +71,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Protection.ensureRunning(this)
+        QuoteReceiver.schedule(this)
         handler.removeCallbacksAndMessages(null)
         handler.post(ticker)
         handler.postDelayed({ render() }, 1200)

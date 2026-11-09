@@ -2,6 +2,7 @@ package com.lckdn.app.guard
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +10,7 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
+import com.lckdn.app.Notifications
 import com.lckdn.app.Prefs
 import com.lckdn.app.Protection
 import com.lckdn.app.R
@@ -37,6 +39,10 @@ class GuardAccessibilityService : AccessibilityService() {
         val IG_REELS_IDS = listOf(
             "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout"
         ).map { "$INSTAGRAM:id/$it" }
+
+        /** Bottom-bar tab buttons to hide. */
+        val YT_TAB_IDS = listOf("$YOUTUBE:id/shorts_pivot_item", "$YOUTUBE:id/pivot_shorts")
+        val IG_TAB_IDS = listOf("$INSTAGRAM:id/clips_tab")
 
         val TIKTOK = setOf(
             "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
@@ -82,40 +88,60 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private var cover: TabCover? = null
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
     private val watchdog = object : Runnable {
         override fun run() {
             Protection.ensureRunning(this@GuardAccessibilityService)
+            Notifications.refreshStatusIfDue(this@GuardAccessibilityService)
             handler.postDelayed(this, 20_000)
         }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        cover = TabCover(this)
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
+        cover?.hide()
         super.onDestroy()
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        cover?.hide()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !Prefs.isLocked(this)) return
+        if (event == null) return
+        if (!Prefs.isLocked(this)) {
+            cover?.hide()
+            return
+        }
         val pkg = event.packageName?.toString() ?: return
+
+        // Another app came to the front: take the tab cover down.
+        val covered = cover?.coveredPackage
+        if (covered != null && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val front = rootInActiveWindow?.packageName?.toString()
+            if (front != null && front != covered) cover?.hide()
+        }
+
         if (pkg == packageName || !isInteresting(pkg)) return
 
         val now = SystemClock.uptimeMillis()
-        if (now - lastAction < 900) return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (now - (lastCheck[pkg] ?: 0L) < 300) return
+            if (now - (lastCheck[pkg] ?: 0L) < 250) return
             lastCheck[pkg] = now
         }
+
+        if (pkg == YOUTUBE || pkg == INSTAGRAM) updateTabCover()
+        if (now - lastAction < 900) return
 
         // Whole-app blocks don't need the view tree.
         if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
@@ -144,6 +170,54 @@ class GuardAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {
             // The view tree can change under us; just wait for the next event.
         }
+    }
+
+    /** Covers the Shorts / Reels tab button while that app is on screen. */
+    private fun updateTabCover() {
+        val c = cover ?: return
+        val root = rootInActiveWindow ?: return
+        val front = root.packageName?.toString()
+        val (label, ids, dark, enabled) = when (front) {
+            YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS))
+            INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
+            else -> return
+        }
+        if (!enabled) {
+            c.hide()
+            return
+        }
+        val bounds = findTabBounds(root, label, ids)
+        if (bounds == null) c.hide() else c.show(front, bounds, dark)
+    }
+
+    private data class TabSpec(val label: String, val ids: List<String>, val dark: Int, val enabled: Boolean)
+
+    /** Bounds of a bottom-bar tab: by view id first, then by its label/description. */
+    private fun findTabBounds(root: AccessibilityNodeInfo, label: String, ids: List<String>): Rect? {
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val candidates = ids.flatMap { root.findAccessibilityNodeInfosByViewId(it).orEmpty() } +
+            root.findAccessibilityNodeInfosByText(label).orEmpty()
+        for (node in candidates) {
+            if (!node.isVisibleToUser) continue
+            val matchesLabel = node.viewIdResourceName in ids ||
+                node.text?.toString().equals(label, ignoreCase = true) ||
+                node.contentDescription?.toString()?.startsWith(label, ignoreCase = true) == true
+            if (!matchesLabel) continue
+            var target: AccessibilityNodeInfo = node
+            var hops = 0
+            while (!target.isClickable && hops < 3) {
+                target = target.parent ?: break
+                hops++
+            }
+            val r = Rect()
+            target.getBoundsInScreen(r)
+            val inBottomBar = r.centerY() > screenH * 0.78f
+            val tabSized = r.width() in 1 until screenW / 2 && r.height() in 1 until screenH / 6
+            if (inBottomBar && tabSized) return r
+        }
+        return null
     }
 
     private fun isInteresting(pkg: String) =

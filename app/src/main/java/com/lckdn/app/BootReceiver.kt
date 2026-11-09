@@ -7,5 +7,6 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Protection.ensureRunning(context)
+        QuoteReceiver.schedule(context)
     }
 }

@@ -35,13 +35,25 @@
         android:textSize="16sp" />
 
     <TextView
+        android:id="@+id/quote"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="28dp"
+        android:layout_marginTop="36dp"
+        android:fontFamily="serif"
         android:gravity="center"
-        android:text="Urges peak and pass within minutes.\nBreathe, stand up, and do something that moves you forward."
+        android:lineSpacingExtra="4dp"
+        android:textColor="@color/text"
+        android:textSize="18sp"
+        android:textStyle="italic" />
+
+    <TextView
+        android:id="@+id/quoteAuthor"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:letterSpacing="0.12"
         android:textColor="@color/text_faint"
-        android:textSize="13sp" />
+        android:textSize="12sp" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/home"

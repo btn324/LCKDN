@@ -18,8 +18,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.lckdn.app.Notifications
 import com.lckdn.app.Prefs
 import com.lckdn.app.Protection
+import com.lckdn.app.QuoteReceiver
 import com.lckdn.app.R
 
 class SetupActivity : AppCompatActivity() {
@@ -167,13 +169,18 @@ class SetupActivity : AppCompatActivity() {
             key = null
         )
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
-        addToggle("YouTube Shorts", "Backs out of the Shorts player. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
-        addToggle("Instagram Reels", "Backs out of the Reels viewer. Feed, stories and DMs keep working.", Prefs.BLOCK_REELS)
+        addToggle("YouTube Shorts", "Hides the Shorts tab and backs out of any Short. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
+        addToggle("Instagram Reels", "Hides the Reels tab and backs out of any Reel. Feed, Stories and DMs keep working.", Prefs.BLOCK_REELS)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
             "Strict browser filter",
             "Also blocks explicit words in addresses and searches, not just known sites.",
             Prefs.STRICT_BROWSER
+        )
+        addToggle(
+            "Daily motivation",
+            "A powerful quote at 8:00, 13:00 and 20:00, plus a fresh one in the Locked in notification every 30 minutes.",
+            Prefs.QUOTES
         )
     }
 
@@ -188,12 +195,17 @@ class SetupActivity : AppCompatActivity() {
         } else {
             toggle.isChecked = Prefs.flag(this, key)
             toggle.setOnCheckedChangeListener { button, checked ->
-                if (!checked && Prefs.isLocked(this)) {
+                // Quotes aren't protection, so they can always be switched.
+                if (!checked && Prefs.isLocked(this) && key != Prefs.QUOTES) {
                     button.isChecked = true
                     Toast.makeText(this, R.string.loosen_blocked, Toast.LENGTH_SHORT).show()
                     return@setOnCheckedChangeListener
                 }
                 Prefs.setFlag(this, key, checked)
+                if (key == Prefs.QUOTES) {
+                    QuoteReceiver.schedule(this)
+                    Notifications.refreshStatusIfDue(this, force = true)
+                }
             }
         }
         toggles.addView(row)

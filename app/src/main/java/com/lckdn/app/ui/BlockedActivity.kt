@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.lckdn.app.Quotes
 import com.lckdn.app.R
 
 class BlockedActivity : AppCompatActivity() {
@@ -31,6 +32,9 @@ class BlockedActivity : AppCompatActivity() {
     private fun bind(intent: Intent?) {
         findViewById<TextView>(R.id.reason).text =
             intent?.getStringExtra(EXTRA_REASON) ?: getString(R.string.page_blocked)
+        val q = Quotes.random()
+        findViewById<TextView>(R.id.quote).text = "“${q.text}”"
+        findViewById<TextView>(R.id.quoteAuthor).text = q.author.uppercase()
     }
 
     private fun goHome() {
