@@ -1,0 +1,233 @@
+package com.lckdn.app.guard
+
+import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
+import com.lckdn.app.Prefs
+import com.lckdn.app.Protection
+import com.lckdn.app.R
+import com.lckdn.app.filter.Blocklist
+import com.lckdn.app.ui.BlockedActivity
+
+/**
+ * Screen-level guard. Only acts while locked in. It:
+ *  - backs out of YouTube Shorts and Instagram Reels (the rest of each app keeps working)
+ *  - closes TikTok (optional) and filter-bypassing apps such as Tor Browser
+ *  - clears explicit searches and leaves explicit pages in browsers
+ *  - stops LCKDN from being force-stopped, uninstalled, deactivated or replaced by another VPN
+ * Nothing it reads is stored or sent anywhere.
+ */
+class GuardAccessibilityService : AccessibilityService() {
+
+    private companion object {
+        const val YOUTUBE = "com.google.android.youtube"
+        const val INSTAGRAM = "com.instagram.android"
+        const val VPN_DIALOGS = "com.android.vpndialogs"
+
+        val YT_SHORTS_IDS = listOf(
+            "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root"
+        ).map { "$YOUTUBE:id/$it" }
+
+        val IG_REELS_IDS = listOf(
+            "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout"
+        ).map { "$INSTAGRAM:id/$it" }
+
+        val TIKTOK = setOf(
+            "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+            "com.ss.android.ugc.aweme", "com.zhiliaoapp.musically.go"
+        )
+
+        /** Apps that route around the DNS filter. */
+        val BYPASS_APPS = setOf(
+            "org.torproject.torbrowser", "org.torproject.torbrowser_alpha",
+            "org.torproject.android", "info.guardianproject.orfox"
+        )
+
+        val SETTINGS = setOf(
+            "com.android.settings", "com.google.android.packageinstaller",
+            "com.android.packageinstaller", "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller", "com.miui.securitycenter",
+            "com.samsung.android.lool", "com.coloros.safecenter", "com.oplus.safecenter"
+        )
+
+        val DANGER = listOf(
+            "force stop", "uninstall", "deactivate", "turn off", "clear storage", "clear data",
+            "disconnect", "forget", "always-on", "stop lckdn", "use lckdn", "lckdn shortcut"
+        )
+
+        val BROWSERS: Map<String, List<String>> = buildMap {
+            listOf(
+                "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
+                "com.brave.browser", "com.brave.browser_beta", "com.microsoft.emmx",
+                "com.vivaldi.browser", "com.kiwibrowser.browser", "com.yandex.browser"
+            ).forEach { put(it, listOf("url_bar", "search_box_text")) }
+            listOf("org.mozilla.firefox", "org.mozilla.firefox_beta", "org.mozilla.fenix", "org.mozilla.focus")
+                .forEach { put(it, listOf("mozac_browser_toolbar_url_view", "url_bar_title", "display_url", "mozac_browser_toolbar_edit_url_view")) }
+            put("com.sec.android.app.sbrowser", listOf("location_bar_edit_text", "custom_tab_toolbar_url_bar_text"))
+            put("com.sec.android.app.sbrowser.beta", listOf("location_bar_edit_text"))
+            put("com.opera.browser", listOf("url_field"))
+            put("com.opera.mini.native", listOf("url_field"))
+            put("com.opera.gx", listOf("url_field"))
+            put("com.duckduckgo.mobile.android", listOf("omnibarTextInput"))
+            put("com.mi.globalbrowser", listOf("url"))
+            put("com.UCMobile.intl", listOf("titlebar_url"))
+            put("com.google.android.googlequicksearchbox", listOf("search_box", "googleapp_search_box"))
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val lastCheck = HashMap<String, Long>()
+    private var lastAction = 0L
+
+    private val watchdog = object : Runnable {
+        override fun run() {
+            Protection.ensureRunning(this@GuardAccessibilityService)
+            handler.postDelayed(this, 20_000)
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        handler.removeCallbacks(watchdog)
+        handler.post(watchdog)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(watchdog)
+        super.onDestroy()
+    }
+
+    override fun onInterrupt() {}
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || !Prefs.isLocked(this)) return
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName || !isInteresting(pkg)) return
+
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAction < 900) return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            if (now - (lastCheck[pkg] ?: 0L) < 300) return
+            lastCheck[pkg] = now
+        }
+
+        // Whole-app blocks don't need the view tree.
+        if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
+            return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        }
+
+        val root = rootInActiveWindow ?: return
+        val rootPkg = root.packageName?.toString() ?: pkg
+        try {
+            when {
+                rootPkg == YOUTUBE && Prefs.flag(this, Prefs.BLOCK_SHORTS) ->
+                    if (hasVisibleId(root, YT_SHORTS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
+
+                rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
+                    if (hasVisibleId(root, IG_REELS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+
+                rootPkg in BROWSERS -> checkBrowser(root, rootPkg)
+
+                rootPkg == VPN_DIALOGS -> {
+                    if (!collectText(root).contains("lckdn")) act(GLOBAL_ACTION_BACK, getString(R.string.vpn_blocked))
+                }
+
+                rootPkg in SETTINGS -> checkTamper(root)
+            }
+        } catch (_: Exception) {
+            // The view tree can change under us; just wait for the next event.
+        }
+    }
+
+    private fun isInteresting(pkg: String) =
+        pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
+            pkg in BYPASS_APPS || pkg in SETTINGS || pkg in BROWSERS
+
+    private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
+        ids.any { id ->
+            root.findAccessibilityNodeInfosByViewId(id)?.any { it.isVisibleToUser } == true
+        }
+
+    private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
+        val strict = Prefs.flag(this, Prefs.STRICT_BROWSER)
+        for (id in BROWSERS[pkg].orEmpty()) {
+            val nodes = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") ?: continue
+            for (node in nodes) {
+                val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+                val explicit = if (strict) Blocklist.isExplicitText(text) else Blocklist.isExplicitHost(text)
+                if (!explicit) continue
+                if (node.isFocused && node.isEditable) {
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                    }
+                    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    toast(getString(R.string.search_blocked))
+                    lastAction = SystemClock.uptimeMillis()
+                } else {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    showBlocked(getString(R.string.page_blocked))
+                }
+                return
+            }
+        }
+    }
+
+    private fun checkTamper(root: AccessibilityNodeInfo) {
+        val text = collectText(root)
+        val aboutUs = text.contains("lckdn")
+        if (aboutUs && DANGER.any { text.contains(it) }) {
+            act(GLOBAL_ACTION_HOME, getString(R.string.tamper_blocked))
+            return
+        }
+        // A custom Private DNS hostname would route lookups around the filter.
+        if (text.contains("private dns provider hostname") || text.contains("private dns hostname")) {
+            act(GLOBAL_ACTION_BACK, getString(R.string.tamper_blocked))
+        }
+    }
+
+    /** Lower-cased text + content descriptions of the visible tree (bounded). */
+    private fun collectText(root: AccessibilityNodeInfo, limit: Int = 600): String {
+        val sb = StringBuilder()
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < limit) {
+            val node = stack.removeLast()
+            seen++
+            node.text?.let { sb.append(it).append('\n') }
+            node.contentDescription?.let { sb.append(it).append('\n') }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return sb.toString().lowercase()
+    }
+
+    private fun act(action: Int, message: String) {
+        lastAction = SystemClock.uptimeMillis()
+        performGlobalAction(action)
+        toast(message)
+    }
+
+    private fun showBlocked(reason: String) {
+        lastAction = SystemClock.uptimeMillis()
+        try {
+            startActivity(
+                Intent(this, BlockedActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(BlockedActivity.EXTRA_REASON, reason)
+            )
+        } catch (_: Exception) {
+            toast(reason)
+        }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+}

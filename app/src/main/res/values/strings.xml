@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LCKDN</string>
+    <string name="tagline">Stay locked in.</string>
+    <string name="settings">Protection settings</string>
+
+    <string name="status_off">Not protected</string>
+    <string name="status_off_sub">Tap to lock in</string>
+    <string name="status_on">Locked in</string>
+    <string name="footer_off">On-device filtering · Nothing you browse is collected</string>
+    <string name="footer_on">Request unlock</string>
+    <string name="interrupted">Protection interrupted · Tap to restore</string>
+
+    <string name="lock_confirm_title">Lock in?</string>
+    <string name="lock_confirm_body">LCKDN will block adult content, ads and pop-ups, and short-form video feeds across your phone.\n\nOnce you lock in, there is no off switch. Turning protection off means typing a 480-character code with zero mistakes, then waiting 60 minutes.</string>
+    <string name="lock_confirm_yes">Lock in</string>
+    <string name="lock_confirm_no">Not yet</string>
+    <string name="already_locked">You\'re locked in. Stay the course.</string>
+
+    <string name="accessibility_description">LCKDN uses this to block YouTube Shorts and Instagram Reels, stop explicit searches and addresses in browsers, and protect itself while you are locked in. LCKDN never stores or transmits what is on your screen.</string>
+    <string name="admin_explanation">Uninstall protection stops LCKDN from being removed while you are locked in.</string>
+    <string name="admin_disable_locked">LCKDN is locked in. Use the unlock challenge in the app to turn protection off.</string>
+    <string name="admin_disable_unlocked">Removing uninstall protection makes it easier to quit.</string>
+
+    <string name="tamper_blocked">LCKDN is locked. Use the unlock challenge to turn it off.</string>
+    <string name="vpn_blocked">Other VPNs are blocked while you\'re locked in.</string>
+    <string name="shorts_blocked">Shorts are blocked. Stay locked in.</string>
+    <string name="reels_blocked">Reels are blocked. Stay locked in.</string>
+    <string name="app_blocked">This app is blocked while you\'re locked in.</string>
+    <string name="search_blocked">That search is blocked.</string>
+    <string name="page_blocked">This page is blocked by LCKDN.</string>
+    <string name="loosen_blocked">You can\'t loosen protection while locked in.</string>
+</resources>
