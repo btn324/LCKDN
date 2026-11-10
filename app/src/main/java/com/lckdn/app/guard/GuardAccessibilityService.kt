@@ -35,6 +35,27 @@ class GuardAccessibilityService : AccessibilityService() {
         /** Facebook / Messenger: Reels live in these. */
         val FACEBOOK = setOf("com.facebook.katana", "com.facebook.lite", "com.facebook.orca")
 
+        /**
+         * Social / content apps where explicit posts, captions and NSFW feeds appear. In these we
+         * clear explicit searches, close explicit posts by their visible text, and back out of
+         * "sensitive / 18+" age gates (which sit in front of explicit media).
+         */
+        val FEED_APPS = setOf(
+            "com.reddit.frontpage", "com.reddit.scribe",           // Reddit
+            "ml.docilealligator.infinityforreddit", "com.rubenmayayo.reddit", "me.ccrama.redditslide",
+            "com.twitter.android", "com.twitter.android.lite",     // X / Twitter
+            "org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram", // Telegram
+            "com.tumblr", "com.snapchat.android", "com.pinterest", "com.discord",
+            "com.bsky.app", "com.zhiliaoapp.musically.go", "com.vkontakte.android", "com.imgur.mobile"
+        )
+
+        /** Age / content gates that precede explicit media. Matched case-insensitively. */
+        val FEED_GATES = listOf(
+            "sexually explicit", "contains nudity", "mature content", "sensitive content",
+            "adult content", "nsfw content", "18+ content", "over 18 to view", "contains sensitive",
+            "r/nsfw", "/r/nsfw", "marked as 18+", "view sensitive"
+        )
+
         val YT_SHORTS_IDS = listOf(
             "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root"
         ).map { "$YOUTUBE:id/$it" }
@@ -179,8 +200,12 @@ class GuardAccessibilityService : AccessibilityService() {
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
                     if (hasVisibleId(root, IG_REELS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
 
-                rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) ->
+                rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) -> {
                     if (isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    else checkFeedApp(root)
+                }
+
+                rootPkg in FEED_APPS -> checkFeedApp(root)
 
                 rootPkg in BROWSERS -> checkBrowser(root, rootPkg)
 
@@ -246,7 +271,34 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
-            pkg in FACEBOOK || pkg in BYPASS_APPS || pkg in SETTINGS || pkg in BROWSERS
+            pkg in FACEBOOK || pkg in FEED_APPS || pkg in BYPASS_APPS || pkg in SETTINGS ||
+            pkg in BROWSERS
+
+    /**
+     * Reddit, X, Telegram and other feed apps: clear explicit searches, close explicit posts by
+     * their visible text, and back out of "sensitive / 18+" gates. Image-only content with no
+     * text cannot be read by accessibility, so this is a strong filter, not a perfect one.
+     */
+    private fun checkFeedApp(root: AccessibilityNodeInfo) {
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused?.isEditable == true) {
+            val typed = focused.text?.toString()
+            if (typed != null && Blocklist.isExplicitText(typed)) {
+                val args = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                }
+                focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                toast(getString(R.string.search_blocked))
+                lastAction = SystemClock.uptimeMillis()
+                return
+            }
+        }
+        val text = collectText(root, limit = 500)
+        if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) }) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            showBlocked(getString(R.string.content_blocked))
+        }
+    }
 
     /**
      * Facebook hides its view ids, so a Reel is recognised by its full-screen immersive video:

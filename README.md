@@ -14,7 +14,8 @@ LCKDN is an Android app that blocks porn and explicit content, ads and pop-ups, 
 | **Explicit YouTube videos** | YouTube Restricted Mode is forced at the DNS level, explicit searches in the YouTube app are cleared, and any video whose title is explicit is closed automatically. |
 | **Instagram & Facebook Reels** | The Reels tab button is hidden and can't be tapped, and any Reel that still opens is closed, in both Instagram and Facebook. Feeds, Stories and DMs work normally. |
 | **TikTok** (optional) | Closed while you're locked in. |
-| **Explicit searches** | Explicit words typed in browser address bars are cleared, and explicit pages are closed. |
+| **Reddit, X, Telegram & other feeds** | In Reddit, X (Twitter), Telegram, Tumblr, Snapchat, Pinterest, Discord, Bluesky and more, explicit searches are cleared, explicit posts are closed by their visible text, and "sensitive / 18+" age gates are backed out of. Image-only content with no text can't be read by the on-screen guard, so this is a strong filter, not a perfect one — the DNS layer still blocks the known NSFW hosts behind it. |
+| **Explicit searches** | Explicit words typed in browser address bars and in-app search boxes are cleared, and explicit pages are closed. |
 | **Daily motivation** | A quote at 8:00, 13:00 and 20:00, and a fresh one in the Locked in notification every 30 minutes. |
 | **Bypass routes** | DNS-over-HTTPS endpoints, proxy sites, Tor Browser, other VPNs and custom Private DNS are blocked. |
 

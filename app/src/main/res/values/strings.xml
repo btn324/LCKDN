@@ -30,6 +30,7 @@
     <string name="vpn_blocked">Other VPNs are blocked while you\'re locked in.</string>
     <string name="shorts_blocked">Shorts are blocked. Stay locked in.</string>
     <string name="video_blocked">This video is blocked by LCKDN.</string>
+    <string name="content_blocked">Explicit content blocked. Stay locked in.</string>
     <string name="reels_blocked">Reels are blocked. Stay locked in.</string>
     <string name="app_blocked">This app is blocked while you\'re locked in.</string>
     <string name="search_blocked">That search is blocked.</string>
