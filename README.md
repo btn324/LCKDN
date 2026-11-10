@@ -42,7 +42,7 @@ Everything runs on the phone. LCKDN has no account, no analytics and no server. 
 
 ## Limits
 
-No app can make a phone fully tamper-proof without a factory reset or managed-device setup. Safe mode (which disables all third-party apps), a computer with ADB, or a factory reset can still remove LCKDN. Apps that use their own encrypted DNS or a built-in VPN can get around DNS filtering. LCKDN blocks the common ones, but the list can't cover everything. Shorts and Reels detection relies on the apps' current screen layout and may need updating when those apps change.
+No app can make itself **completely undeletable** on a normal phone. With device admin enabled plus the accessibility guard, LCKDN blocks the Force-stop, Uninstall and "deactivate device admin" screens (including on Xiaomi/HyperOS and in Hungarian), which makes removal hard enough not to be worth it on impulse. The only way further — Device Owner provisioning — requires wiping the phone to set up and again to remove, and removes safe mode as an escape hatch, so LCKDN deliberately does not use it. Safe mode (which disables all third-party apps), a computer with ADB, or a factory reset can still remove LCKDN, and that is on purpose: it is your recovery path. Apps that use their own encrypted DNS or a built-in VPN can get around DNS filtering. LCKDN blocks the common ones, but the list can't cover everything. Shorts and Reels detection relies on the apps' current screen layout and may need updating when those apps change.
 
 ## Build
 

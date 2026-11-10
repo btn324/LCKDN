@@ -92,15 +92,29 @@ class GuardAccessibilityService : AccessibilityService() {
         )
 
         val SETTINGS = setOf(
-            "com.android.settings", "com.google.android.packageinstaller",
-            "com.android.packageinstaller", "com.google.android.permissioncontroller",
-            "com.android.permissioncontroller", "com.miui.securitycenter",
-            "com.samsung.android.lool", "com.coloros.safecenter", "com.oplus.safecenter"
+            "com.android.settings", "com.android.settings.intelligence",
+            "com.google.android.packageinstaller", "com.android.packageinstaller",
+            "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+            // Xiaomi / POCO HyperOS & MIUI
+            "com.miui.securitycenter", "com.miui.packageinstaller",
+            "com.xiaomi.market", "com.miui.cleanmaster", "com.miui.guardprovider",
+            // Samsung, Oppo/Realme/OnePlus, Vivo, Huawei
+            "com.samsung.android.lool", "com.samsung.android.packageinstaller",
+            "com.coloros.safecenter", "com.oplus.safecenter", "com.coloros.phonemanager",
+            "com.iqoo.secure", "com.vivo.permissionmanager", "com.vivo.appfilter",
+            "com.huawei.systemmanager", "com.android.settings.overlay"
         )
 
         val DANGER = listOf(
+            // English
             "force stop", "uninstall", "deactivate", "turn off", "clear storage", "clear data",
-            "disconnect", "forget", "always-on", "stop lckdn", "use lckdn", "lckdn shortcut"
+            "disconnect", "forget", "always-on", "stop lckdn", "use lckdn", "lckdn shortcut",
+            "disable", "remove app", "app info",
+            // Hungarian (accented and plain forms)
+            "eltávolít", "eltavolit", "törlés", "torles", "letilt", "kikapcsol", "leállít",
+            "leallit", "kényszerített leállítás", "kenyszeritett leallitas", "kényszerleállítás",
+            "adatok törlése", "adatok torlese", "tárhely törlése", "deaktivál", "deaktival",
+            "alkalmazás eltávolítása", "eltávolítása"
         )
 
         val BROWSERS: Map<String, List<String>> = buildMap {
