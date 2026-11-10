@@ -170,7 +170,7 @@ class SetupActivity : AppCompatActivity() {
         )
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
         addToggle("YouTube Shorts", "Hides the Shorts tab and backs out of any Short. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
-        addToggle("Instagram Reels", "Hides the Reels tab and backs out of any Reel. Feed, Stories and DMs keep working.", Prefs.BLOCK_REELS)
+        addToggle("Reels (Instagram + Facebook)", "Hides the Reels tab and backs out of any Reel in Instagram and Facebook. Feeds, Stories and DMs keep working.", Prefs.BLOCK_REELS)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
             "Strict browser filter",

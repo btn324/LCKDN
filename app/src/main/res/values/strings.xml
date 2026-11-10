@@ -10,6 +10,10 @@
     <string name="footer_off">On-device filtering · Nothing you browse is collected</string>
     <string name="footer_on">Request unlock</string>
     <string name="interrupted">Protection interrupted · Tap to restore</string>
+    <string name="always_on_cta">Turn on Always-on VPN</string>
+    <string name="always_on_title">Make protection unbreakable</string>
+    <string name="always_on_body">Always-on VPN keeps LCKDN\'s filter running at all times and blocks any connection that tries to skip it — the strongest setting there is.\n\nOn the next screen:\n1. Find LCKDN in the VPN list and tap the ⚙ gear beside it.\n2. Turn on \"Always-on VPN\".\n3. Turn on \"Block connections without VPN\".\n\nIf the switches are greyed out, make sure protection is running first.</string>
+    <string name="always_on_open">Open VPN settings</string>
 
     <string name="lock_confirm_title">Lock in?</string>
     <string name="lock_confirm_body">LCKDN will block adult content, ads and pop-ups, and short-form video feeds across your phone.\n\nOnce you lock in, there is no off switch. Turning protection off means typing a 480-character code with zero mistakes, then waiting 60 minutes.</string>

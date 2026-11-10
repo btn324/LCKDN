@@ -1,15 +1,17 @@
 package com.lckdn.app.filter
 
 import java.net.URLDecoder
+import java.text.Normalizer
 
 /**
- * Local rules applied before any DNS query leaves the phone. The upstream resolvers
- * (AdGuard Family / Cloudflare for Families) add millions more adult and ad domains
- * and enforce SafeSearch on Google, Bing, DuckDuckGo and YouTube.
+ * Local rules applied before any DNS query leaves the phone, and the keyword engine the
+ * screen guard uses to catch explicit searches and pages. The upstream resolvers
+ * (AdGuard Family / Cloudflare for Families) add millions more adult and ad domains and
+ * enforce SafeSearch on Google, Bing, DuckDuckGo and YouTube on top of this.
  */
 object Blocklist {
 
-    private val adultTlds = listOf(".xxx", ".porn", ".sex", ".adult")
+    private val adultTlds = listOf(".xxx", ".porn", ".sex", ".adult", ".porno", ".cam", ".tube")
 
     private val adultDomains = hashSetOf(
         "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "redtube.com", "youporn.com",
@@ -25,28 +27,77 @@ object Blocklist {
         "8muses.com", "luscious.net", "missav.com", "missav.ws", "jable.tv", "javhd.com",
         "erome.com", "simpcity.su", "fikfap.com", "porngifs.com", "xgroovy.com", "ok.xxx",
         "porn300.com", "pornone.com", "xcafe.com", "anysex.com", "vjav.com", "javlibrary.com",
-        "hentaihaven.xxx", "hentai2read.com", "rule34.paheal.net", "rule34video.com",
+        "hentaihaven.xxx", "hentai2read.com", "rule34.paheal.net", "rule34video.com", "rule34.xxx",
         "playboy.com", "brazzers.com", "realitykings.com", "bangbros.com", "naughtyamerica.com",
         "adultfriendfinder.com", "ashleymadison.com", "fling.com", "jerkmate.com", "flirt4free.com",
-        "streamate.com", "camster.com", "imlive.com", "slutroulette.com",
+        "streamate.com", "camster.com", "imlive.com", "slutroulette.com", "pornhd.com", "porn.com",
+        "xvideos2.com", "hdporn.com", "tubegalore.com", "porngo.com", "pornhat.com",
+        "fullporner.com", "hotmovies.com", "xmoviesforyou.com", "watchmdh.to", "spankwire.com",
+        "keezmovies.com", "extremetube.com", "nuvid.com", "empflix.com", "pornhublive.com",
+        "thumbzilla.com", "cams.com", "sextvx.com", "javmost.com", "supjav.com", "javguru.com",
+        "av01.tv", "javbangers.com", "iwank.tv", "porzo.com", "booloo.com", "nudez.com",
+        "leakedzone.com", "internetchicks.com", "influencersgonewild.com", "thotslife.com",
+        "pichunter.com", "metart.com", "yespornplease.com", "cliphunter.com",
+        "boobpedia.com", "babepedia.com", "indexxx.com", "theporndude.com", "pornmd.com",
         // Adult ad networks (pop-unders and redirect ads)
         "exoclick.com", "exosrv.com", "exdynsrv.com", "juicyads.com", "trafficjunky.com",
         "trafficjunky.net", "trafficstars.com", "tsyndicate.com", "plugrush.com",
         "ero-advertising.com", "adxxx.com", "trafficfactory.biz", "realsrv.com", "magsrv.com"
     )
 
+    /**
+     * Explicit terms across many languages, as lowercase, accent-stripped substrings.
+     * Chosen to be specific enough that they rarely appear in ordinary text; the user has
+     * chosen aggressive blocking over the occasional false positive.
+     */
     private val adultKeywords = listOf(
-        "porn", "xxx", "xvideo", "xnxx", "xhamster", "hentai", "nsfw", "onlyfans", "fansly",
-        "chaturbate", "redtube", "youporn", "brazzers", "bangbros", "spankbang", "stripchat",
-        "bongacams", "livejasmin", "camsoda", "myfreecams", "eporner", "rule34", "nhentai",
-        "motherless", "fapello", "thothub", "camgirl", "sexcam", "milf", "blowjob", "cumshot",
-        "pussy", "boobs", "nudes", "erotic", "fetish", "bdsm", "jerkoff", "masturbat", "redgifs",
-        "hanime", "gonewild", "deepnude", "undress"
+        // English
+        "porn", "porno", "xxx", "xvideo", "xnxx", "xhamster", "hentai", "nsfw", "onlyfans",
+        "fansly", "chaturbate", "redtube", "youporn", "brazzers", "bangbros", "spankbang",
+        "stripchat", "bongacams", "livejasmin", "camsoda", "myfreecams", "eporner", "rule34",
+        "nhentai", "motherless", "fapello", "thothub", "camgirl", "camwhore", "sexcam", "milf",
+        "blowjob", "handjob", "deepthroat", "cumshot", "creampie", "gangbang", "bukkake", "footjob",
+        "pussy", "boobs", "titties", "nipples", "nudes", "erotic", "erotica", "fetish", "bdsm",
+        "jerkoff", "masturbat", "redgifs", "hanime", "gonewild", "deepnude", "undress", "escort",
+        "camsex", "sexting", "nudify", "upskirt", "cameltoe", "softcore", "lewd", "ecchi", "ahegao",
+        "futanari", "doujin", "cumming", "orgasm", "dildo", "blowbang", "titjob", "fap ", "coom",
+        // Hungarian (accent-stripped forms included)
+        "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cicik", "mellek", "punci", "pina",
+        "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc", "maszturbal", "merevedes", "orgazmus",
+        "csocs", "szopas", "fasza", "geci", "didko", "pornofilm", "pornokep", "pornovideo", "cickok",
+        // German
+        "nackt", "titten", "ficken", "muschi", "schwanz", "geile", "nackte", "nutte",
+        // French
+        "baise", "baiser", "salope", "nichons", "enculer", "branlette", "levrette",
+        // Spanish / Portuguese
+        "desnuda", "desnudo", "tetas", "cono", "coño", "follar", "corrida", "mamada", "buceta",
+        "peitos", "foder", "gozada", "putaria", "safada", "xota", "siririca", "verga",
+        // Italian
+        "nuda", "tette", "figa", "scopare", "troia", "pompino", "sborra",
+        // Russian / Ukrainian (translit)
+        "siski", "pizda", "trah", "eblja", "minet", "golaya", "porevo", "porno",
+        // Polish / Czech / Slovak / Romanian
+        "cipka", "cycki", "ruchanie", "kurwa", "prsa", "futai", "muie", "pula", "sani goi",
+        // Dutch / Scandinavian
+        "naakt", "tieten", "neuken", "naken", "fitta",
+        // Turkish
+        "sikis", "sikin", "gotten", "ciplak", "amcik",
+        // Hindi / Urdu (translit), Indonesian, Tagalog
+        "chudai", "nangi", "gaand", "bhabhi", "bokep", "ngentot", "memek", "telanjang", "kantot",
+        "hubad", "pekpek",
+        // common latinized Japanese/Korean
+        "mujun", "yadong"
     )
 
-    /** Legitimate words that happen to contain "sex". */
-    private val sexExceptions = listOf(
-        "essex", "sussex", "middlesex", "wessex", "sexton", "sextant", "sexagen"
+    /** Longer words that innocently contain a blocked substring. */
+    private val keywordExceptions = listOf(
+        "essex", "sussex", "middlesex", "wessex", "sexton", "sextant", "sexagen", "sexagesima",
+        "homosexual", "heterosexual", "bisexual", "asexual", "sexism", "sexist", "unisex",
+        "analysis", "analytic", "analog", "analyt", "canal", "banal", "scandal",
+        "therapist", "assassin", "assistant", "assembly", "assess", "class", "pass", "grass",
+        "cumberland", "cumulative", "accumulate", "document", "circumstance", "scunthorpe",
+        "cockpit", "cocktail", "peacock", "hancock", "shuttlecock", "dickens", "cummings",
+        "title", "competition", "constitution", "institute", "latitude", "appetite", "nudge"
     )
 
     /** DNS-over-HTTPS / DoT endpoints and canaries that would let browsers bypass the filter. */
@@ -60,8 +111,9 @@ object Blocklist {
         "doh.mullvad.net", "dns.mullvad.net", "dns.controld.com", "freedns.controld.com",
         "doh.xfinity.com", "dns.twnic.tw", "dns.alidns.com", "doh.pub", "dns0.eu",
         // Proxy / unblocker sites
-        "croxyproxy.com", "hide.me", "hidester.com", "proxysite.com", "kproxy.com",
-        "hidemyass.com", "4everproxy.com", "blockaway.net", "proxyium.com"
+        "croxyproxy.com", "croxyproxy.rocks", "hide.me", "hidester.com", "proxysite.com",
+        "kproxy.com", "hidemyass.com", "4everproxy.com", "blockaway.net", "proxyium.com",
+        "proxyfree.com", "genmirror.com", "unblockit.cam", "whateverorigin.org", "12ft.io"
     )
 
     private val adDomains = hashSetOf(
@@ -85,7 +137,7 @@ object Blocklist {
     }
 
     fun isAdultDomain(domain: String): Boolean {
-        val d = domain.trimEnd('.').lowercase()
+        val d = fold(domain.trimEnd('.'))
         if (adultTlds.any { d.endsWith(it) }) return true
         if (matchesSuffix(d, adultDomains)) return true
         return containsAdultKeyword(d)
@@ -93,11 +145,7 @@ object Blocklist {
 
     /** Text from a browser address bar: a URL, a bare host, or a search query. */
     fun isExplicitText(raw: String): Boolean {
-        val text = try {
-            URLDecoder.decode(raw, "UTF-8")
-        } catch (e: Exception) {
-            raw
-        }.lowercase()
+        val text = fold(decode(raw))
         val host = hostOf(text)
         if (host != null && isAdultDomain(host)) return true
         return containsAdultKeyword(text)
@@ -105,8 +153,45 @@ object Blocklist {
 
     /** Only the host part of what's in the address bar. Used when strict mode is off. */
     fun isExplicitHost(raw: String): Boolean {
-        val host = hostOf(raw.lowercase()) ?: return false
+        val host = hostOf(fold(raw)) ?: return false
         return isAdultDomain(host)
+    }
+
+    /**
+     * A larger blob of on-screen text (page title + visible labels). Used by the screen guard
+     * to catch explicit pages and image results even on sites not in the domain list.
+     */
+    fun isExplicitContent(raw: String): Boolean = containsAdultKeyword(fold(decode(raw)))
+
+    private fun decode(raw: String): String =
+        try {
+            URLDecoder.decode(raw, "UTF-8")
+        } catch (e: Exception) {
+            raw
+        }
+
+    /** Lowercase, strip accents, and collapse common letter/number substitutions. */
+    private fun fold(input: String): String {
+        val lowered = input.lowercase()
+        val stripped = Normalizer.normalize(lowered, Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+        val sb = StringBuilder(stripped.length)
+        for (c in stripped) {
+            sb.append(
+                when (c) {
+                    '0' -> 'o'
+                    '1' -> 'i'
+                    '3' -> 'e'
+                    '4' -> 'a'
+                    '5' -> 's'
+                    '7' -> 't'
+                    '@' -> 'a'
+                    '$' -> 's'
+                    else -> c
+                }
+            )
+        }
+        return sb.toString()
     }
 
     private fun hostOf(text: String): String? {
@@ -125,16 +210,25 @@ object Blocklist {
         }
     }
 
-    private fun containsAdultKeyword(text: String): Boolean {
-        if (adultKeywords.any { text.contains(it) }) return true
-        var idx = text.indexOf("sex")
-        while (idx >= 0) {
-            val excused = sexExceptions.any { ex ->
-                val start = idx - ex.indexOf("sex")
-                start >= 0 && text.startsWith(ex, start)
+    private fun containsAdultKeyword(folded: String): Boolean {
+        for (kw in adultKeywords) {
+            var idx = folded.indexOf(kw)
+            while (idx >= 0) {
+                if (!isExcused(folded, idx, kw.length)) return true
+                idx = folded.indexOf(kw, idx + 1)
             }
-            if (!excused) return true
-            idx = text.indexOf("sex", idx + 1)
+        }
+        return false
+    }
+
+    /** True if the match at [start] sits inside a longer innocent word. */
+    private fun isExcused(text: String, start: Int, len: Int): Boolean {
+        for (ex in keywordExceptions) {
+            var i = text.indexOf(ex)
+            while (i >= 0) {
+                if (start >= i && start + len <= i + ex.length) return true
+                i = text.indexOf(ex, i + 1)
+            }
         }
         return false
     }

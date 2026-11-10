@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.lckdn.app.Prefs
 import com.lckdn.app.Protection
@@ -24,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var summary: TextView
     private lateinit var footer: TextView
     private lateinit var warning: TextView
+    private lateinit var alwaysOnButton: MaterialButton
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -57,9 +59,11 @@ class MainActivity : AppCompatActivity() {
         summary = findViewById(R.id.summary)
         footer = findViewById(R.id.footer)
         warning = findViewById(R.id.warning)
+        alwaysOnButton = findViewById(R.id.alwaysOnButton)
 
         lockButton.setOnClickListener { onLockPressed() }
         warning.setOnClickListener { restore() }
+        alwaysOnButton.setOnClickListener { promptAlwaysOn() }
         footer.setOnClickListener {
             if (Prefs.isLocked(this)) startActivity(Intent(this, UnlockActivity::class.java))
         }
@@ -109,6 +113,15 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun promptAlwaysOn() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.always_on_title)
+            .setMessage(R.string.always_on_body)
+            .setPositiveButton(R.string.always_on_open) { _, _ -> Protection.openVpnSettings(this) }
+            .setNegativeButton(R.string.lock_confirm_no, null)
+            .show()
+    }
+
     private fun restore() {
         val consent = try {
             VpnService.prepare(this)
@@ -142,6 +155,8 @@ class MainActivity : AppCompatActivity() {
             footer.isClickable = false
         }
         warning.isVisible = locked && !Protection.isHealthy(this)
+        // Offer Always-on once the filter is up; it's the one thing the user still turns on by hand.
+        alwaysOnButton.isVisible = locked && Protection.isHealthy(this)
     }
 
     private fun formatSince(ms: Long): String {

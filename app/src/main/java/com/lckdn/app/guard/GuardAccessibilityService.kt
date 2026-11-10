@@ -32,6 +32,9 @@ class GuardAccessibilityService : AccessibilityService() {
         const val INSTAGRAM = "com.instagram.android"
         const val VPN_DIALOGS = "com.android.vpndialogs"
 
+        /** Facebook / Messenger: Reels live in these. */
+        val FACEBOOK = setOf("com.facebook.katana", "com.facebook.lite", "com.facebook.orca")
+
         val YT_SHORTS_IDS = listOf(
             "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root"
         ).map { "$YOUTUBE:id/$it" }
@@ -96,7 +99,7 @@ class GuardAccessibilityService : AccessibilityService() {
         override fun run() {
             Protection.ensureRunning(this@GuardAccessibilityService)
             Notifications.refreshStatusIfDue(this@GuardAccessibilityService)
-            handler.postDelayed(this, 20_000)
+            handler.postDelayed(this, 10_000)
         }
     }
 
@@ -140,7 +143,7 @@ class GuardAccessibilityService : AccessibilityService() {
             lastCheck[pkg] = now
         }
 
-        if (pkg == YOUTUBE || pkg == INSTAGRAM) updateTabCover()
+        if (pkg == YOUTUBE || pkg == INSTAGRAM || pkg in FACEBOOK) updateTabCover()
         if (now - lastAction < 900) return
 
         // Whole-app blocks don't need the view tree.
@@ -159,6 +162,9 @@ class GuardAccessibilityService : AccessibilityService() {
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
                     if (hasVisibleId(root, IG_REELS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
 
+                rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) ->
+                    if (isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+
                 rootPkg in BROWSERS -> checkBrowser(root, rootPkg)
 
                 rootPkg == VPN_DIALOGS -> {
@@ -176,10 +182,11 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun updateTabCover() {
         val c = cover ?: return
         val root = rootInActiveWindow ?: return
-        val front = root.packageName?.toString()
-        val (label, ids, dark, enabled) = when (front) {
-            YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS))
-            INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
+        val front = root.packageName?.toString() ?: return
+        val (label, ids, dark, enabled) = when {
+            front == YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS))
+            front == INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
+            front in FACEBOOK -> TabSpec("Reels", emptyList(), 0xFF18191A.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
             else -> return
         }
         if (!enabled) {
@@ -222,7 +229,34 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
-            pkg in BYPASS_APPS || pkg in SETTINGS || pkg in BROWSERS
+            pkg in FACEBOOK || pkg in BYPASS_APPS || pkg in SETTINGS || pkg in BROWSERS
+
+    /**
+     * Facebook hides its view ids, so a Reel is recognised by its full-screen immersive video:
+     * a tall node (most of the screen) whose description mentions a reel or its overlay controls.
+     */
+    private fun isImmersiveReel(root: AccessibilityNodeInfo): Boolean {
+        val screenH = resources.displayMetrics.heightPixels
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        var tallVideo = false
+        var reelWords = 0
+        val rect = Rect()
+        while (stack.isNotEmpty() && seen < 500) {
+            val node = stack.removeLast()
+            seen++
+            val desc = (node.contentDescription?.toString() ?: node.text?.toString())?.lowercase()
+            if (desc != null && node.isVisibleToUser) {
+                node.getBoundsInScreen(rect)
+                val tall = rect.height() > screenH * 0.6f
+                if (tall && (desc.contains("reel") || (node.className?.contains("TextureView") == true))) tallVideo = true
+                if (desc.startsWith("reel") || desc.contains("reel by") || desc.contains("reels")) reelWords++
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return tallVideo && reelWords >= 1
+    }
 
     private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
         ids.any { id ->
@@ -250,6 +284,12 @@ class GuardAccessibilityService : AccessibilityService() {
                 }
                 return
             }
+        }
+        // Strict mode: also scan the rendered page (title + visible labels), so explicit pages
+        // and image results are closed even on sites the domain list doesn't know.
+        if (strict && Blocklist.isExplicitContent(collectText(root, limit = 400))) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            showBlocked(getString(R.string.page_blocked))
         }
     }
 

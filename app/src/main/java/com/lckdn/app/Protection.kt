@@ -78,6 +78,17 @@ object Protection {
         )
     }
 
+    fun openVpnSettings(c: Context) {
+        try {
+            c.startActivity(Intent("android.settings.VPN_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            try {
+                c.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     fun summary(c: Context): String {
         val parts = mutableListOf("Adult content")
         if (Prefs.flag(c, Prefs.BLOCK_ADS)) parts += "Ads & pop-ups"

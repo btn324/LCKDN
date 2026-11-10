@@ -8,10 +8,10 @@ LCKDN is an Android app that blocks porn and explicit content, ads and pop-ups, 
 
 | | How |
 |---|---|
-| **Adult content** (always on) | An on-device DNS filter blocks known adult sites, adult ad networks and explicit domains in every app and browser. Lookups go to AdGuard Family DNS, which blocks millions more adult and ad domains and enforces SafeSearch on Google, Bing and DuckDuckGo plus YouTube Restricted Mode. Cloudflare for Families is the fallback. |
+| **Adult content** (always on) | An on-device DNS filter blocks known adult sites, adult ad networks and explicit domains in every app and browser. Lookups go to AdGuard Family DNS, which blocks millions more adult and ad domains and enforces SafeSearch on Google, Bing and DuckDuckGo plus YouTube Restricted Mode. Cloudflare for Families is the fallback. Explicit **search terms are blocked in many languages** (Hungarian, English, German, French, Spanish, Portuguese, Italian, Russian, Polish, Turkish, Hindi, Indonesian and more), and in strict mode explicit pages and image results are closed even on unknown sites. |
 | **Ads & pop-ups** | Ad, pop-under and redirect networks are blocked at the DNS level. |
 | **YouTube Shorts** | The Shorts tab button is hidden and can't be tapped, and any Short that still opens is closed. The rest of YouTube works normally. |
-| **Instagram Reels** | The Reels tab button is hidden and can't be tapped, and any Reel that still opens is closed. Feed, Stories and DMs work normally. |
+| **Instagram & Facebook Reels** | The Reels tab button is hidden and can't be tapped, and any Reel that still opens is closed, in both Instagram and Facebook. Feeds, Stories and DMs work normally. |
 | **TikTok** (optional) | Closed while you're locked in. |
 | **Explicit searches** | Explicit words typed in browser address bars are cleared, and explicit pages are closed. |
 | **Daily motivation** | A quote at 8:00, 13:00 and 20:00, and a fresh one in the Locked in notification every 30 minutes. |

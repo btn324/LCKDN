@@ -237,6 +237,19 @@ class BlockerVpnService : VpnService() {
         pool.shutdownNow()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Swiping the app away must not stop the filter.
+        if (Prefs.isLocked(this)) {
+            try {
+                ContextCompat.startForegroundService(
+                    this, Intent(this, BlockerVpnService::class.java).setAction(ACTION_START)
+                )
+            } catch (_: Exception) {
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onRevoke() {
         shutdown()
         if (Prefs.isLocked(this)) Notifications.interrupted(this)
