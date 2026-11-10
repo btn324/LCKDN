@@ -39,6 +39,18 @@ class GuardAccessibilityService : AccessibilityService() {
             "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root"
         ).map { "$YOUTUBE:id/$it" }
 
+        /** The regular video player (not Shorts). */
+        val YT_PLAYER_IDS = listOf(
+            "player_view", "watch_player", "player_fragment_container", "watch_player_fragment"
+        ).map { "$YOUTUBE:id/$it" }
+
+        /** Where the current video's title is rendered. */
+        val YT_TITLE_IDS = listOf(
+            "title", "watch_title", "expandable_title", "video_title", "player_video_title"
+        ).map { "$YOUTUBE:id/$it" }
+
+        val YT_SEARCH_IDS = listOf("search_edit_text", "big_header_search_edit_text").map { "$YOUTUBE:id/$it" }
+
         val IG_REELS_IDS = listOf(
             "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout"
         ).map { "$INSTAGRAM:id/$it" }
@@ -156,8 +168,13 @@ class GuardAccessibilityService : AccessibilityService() {
         val rootPkg = root.packageName?.toString() ?: pkg
         try {
             when {
-                rootPkg == YOUTUBE && Prefs.flag(this, Prefs.BLOCK_SHORTS) ->
-                    if (hasVisibleId(root, YT_SHORTS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
+                rootPkg == YOUTUBE -> {
+                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) && hasVisibleId(root, YT_SHORTS_IDS)) {
+                        act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
+                    } else {
+                        checkYouTube(root)
+                    }
+                }
 
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
                     if (hasVisibleId(root, IG_REELS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
@@ -262,6 +279,47 @@ class GuardAccessibilityService : AccessibilityService() {
         ids.any { id ->
             root.findAccessibilityNodeInfosByViewId(id)?.any { it.isVisibleToUser } == true
         }
+
+    /** Clears explicit YouTube searches and closes any video whose title is explicit. */
+    private fun checkYouTube(root: AccessibilityNodeInfo) {
+        // Explicit search query: clear it in place.
+        for (id in YT_SEARCH_IDS) {
+            for (node in root.findAccessibilityNodeInfosByViewId(id).orEmpty()) {
+                val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+                if (!Blocklist.isExplicitText(text)) continue
+                if (node.isEditable) {
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                    }
+                    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    toast(getString(R.string.search_blocked))
+                    lastAction = SystemClock.uptimeMillis()
+                } else {
+                    act(GLOBAL_ACTION_BACK, getString(R.string.search_blocked))
+                }
+                return
+            }
+        }
+        // Watching a regular video: if its title is explicit, leave the player.
+        if (hasVisibleId(root, YT_PLAYER_IDS)) {
+            val title = firstTextOf(root, YT_TITLE_IDS)
+            if (title != null && Blocklist.isExplicitContent(title)) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                showBlocked(getString(R.string.video_blocked))
+            }
+        }
+    }
+
+    private fun firstTextOf(root: AccessibilityNodeInfo, ids: List<String>): String? {
+        for (id in ids) {
+            for (node in root.findAccessibilityNodeInfosByViewId(id).orEmpty()) {
+                if (!node.isVisibleToUser) continue
+                val text = (node.text ?: node.contentDescription)?.toString()?.takeIf { it.isNotBlank() }
+                if (text != null) return text
+            }
+        }
+        return null
+    }
 
     private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
         val strict = Prefs.flag(this, Prefs.STRICT_BROWSER)

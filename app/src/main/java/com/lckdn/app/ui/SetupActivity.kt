@@ -165,7 +165,7 @@ class SetupActivity : AppCompatActivity() {
     private fun buildToggles() {
         addToggle(
             "Adult content",
-            "Always on. Porn and explicit sites, adult ad networks, and SafeSearch on Google, Bing and YouTube.",
+            "Always on. Blocks porn and explicit sites and adult ad networks, forces SafeSearch and YouTube Restricted Mode, and closes any YouTube video with an explicit title.",
             key = null
         )
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
