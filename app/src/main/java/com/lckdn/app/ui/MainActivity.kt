@@ -82,6 +82,12 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
         handler.post(ticker)
         handler.postDelayed({ render() }, 1200)
+        // If locked but uninstall protection is off, press the point: it's the only non-racy block.
+        if (Prefs.isLocked(this) && !Protection.isAdminActive(this)) {
+            handler.postDelayed({
+                if (!isFinishing && Prefs.isLocked(this) && !Protection.isAdminActive(this)) promptAdmin()
+            }, 1400)
+        }
     }
 
     override fun onPause() {

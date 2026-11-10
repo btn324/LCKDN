@@ -184,14 +184,18 @@ class GuardAccessibilityService : AccessibilityService() {
 
         if (pkg == packageName || !isInteresting(pkg)) return
 
+        // Uninstall / force-stop / deactivate screens must be reacted to on EVERY event with no
+        // cooldown, otherwise they can be won by spamming the screen open faster than the guard.
+        val isTamper = pkg in SETTINGS || pkg in BYPASS_APPS || pkg == VPN_DIALOGS
+
         val now = SystemClock.uptimeMillis()
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+        if (!isTamper && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             if (now - (lastCheck[pkg] ?: 0L) < 250) return
             lastCheck[pkg] = now
         }
 
         if (pkg == YOUTUBE || pkg == INSTAGRAM || pkg in FACEBOOK) updateTabCover()
-        if (now - lastAction < 900) return
+        if (!isTamper && now - lastAction < 900) return
 
         // Whole-app blocks don't need the view tree.
         if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
