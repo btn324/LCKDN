@@ -57,14 +57,16 @@ object Blocklist {
         "stripchat", "bongacams", "livejasmin", "camsoda", "myfreecams", "eporner", "rule34",
         "nhentai", "motherless", "fapello", "thothub", "camgirl", "camwhore", "sexcam", "milf",
         "blowjob", "handjob", "deepthroat", "cumshot", "creampie", "gangbang", "bukkake", "footjob",
-        "pussy", "boobs", "titties", "nipples", "nudes", "erotic", "erotica", "fetish", "bdsm",
-        "jerkoff", "masturbat", "redgifs", "hanime", "gonewild", "deepnude", "undress", "escort",
-        "camsex", "sexting", "nudify", "upskirt", "cameltoe", "softcore", "lewd", "ecchi", "ahegao",
-        "futanari", "doujin", "cumming", "orgasm", "dildo", "blowbang", "titjob", "fap ", "coom",
+        "pussy", "boobs", "titties", "tits", "titty", "busty", "cleavage", "nipples", "nudes",
+        "erotic", "erotica", "fetish", "bdsm", "jerkoff", "masturbat", "redgifs", "hanime",
+        "gonewild", "deepnude", "undress", "escort", "camsex", "sexting", "nudify", "upskirt",
+        "cameltoe", "softcore", "lewd", "ecchi", "ahegao", "futanari", "doujin", "cumming",
+        "orgasm", "dildo", "blowbang", "titjob", "fap ", "coom",
         // Hungarian (accent-stripped forms included)
-        "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cicik", "mellek", "punci", "pina",
-        "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc", "maszturbal", "merevedes", "orgazmus",
-        "csocs", "szopas", "fasza", "geci", "didko", "pornofilm", "pornokep", "pornovideo", "cickok",
+        "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cici", "cicis", "cicik", "csocs",
+        "csocsos", "mellbimbo", "punci", "pina", "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc",
+        "maszturbal", "merevedes", "orgazmus", "szopas", "fasza", "geci", "didko", "pornofilm",
+        "pornokep", "pornovideo", "cickok", "szexi no",
         // German
         "nackt", "titten", "ficken", "muschi", "schwanz", "geile", "nackte", "nutte",
         // French
@@ -97,7 +99,9 @@ object Blocklist {
         "therapist", "assassin", "assistant", "assembly", "assess", "class", "pass", "grass",
         "cumberland", "cumulative", "accumulate", "document", "circumstance", "scunthorpe",
         "cockpit", "cocktail", "peacock", "hancock", "shuttlecock", "dickens", "cummings",
-        "title", "competition", "constitution", "institute", "latitude", "appetite", "nudge"
+        "title", "competition", "constitution", "institute", "latitude", "appetite", "nudge",
+        // Hungarian everyday words that contain a blocked fragment
+        "faszen", "faszenet", "dugasz", "dugaszol", "dugaszt"
     )
 
     /** DNS-over-HTTPS / DoT endpoints and canaries that would let browsers bypass the filter. */
