@@ -14,6 +14,10 @@
     <string name="always_on_title">Make protection unbreakable</string>
     <string name="always_on_body">Always-on VPN keeps LCKDN\'s filter running at all times and blocks any connection that tries to skip it — the strongest setting there is.\n\nOn the next screen:\n1. Find LCKDN in the VPN list and tap the ⚙ gear beside it.\n2. Turn on \"Always-on VPN\".\n3. Turn on \"Block connections without VPN\".\n\nIf the switches are greyed out, make sure protection is running first.</string>
     <string name="always_on_open">Open VPN settings</string>
+    <string name="admin_cta">Turn on uninstall protection</string>
+    <string name="admin_prompt_title">Stop LCKDN being removed</string>
+    <string name="admin_prompt_body">Without this, LCKDN can be taken off from Settings in a few taps. Turning it on makes Android refuse to remove LCKDN until it is switched off here first — and while you\'re locked in, that switch is blocked.\n\nOn the next screen, tap Activate.</string>
+    <string name="admin_open">Turn on</string>
 
     <string name="lock_confirm_title">Lock in?</string>
     <string name="lock_confirm_body">LCKDN will block adult content, ads and pop-ups, and short-form video feeds across your phone.\n\nOnce you lock in, there is no off switch. Turning protection off means typing a 480-character code with zero mistakes, then waiting 60 minutes.</string>
@@ -22,7 +26,7 @@
     <string name="already_locked">You\'re locked in. Stay the course.</string>
 
     <string name="accessibility_description">LCKDN uses this to block YouTube Shorts and Instagram Reels, stop explicit searches and addresses in browsers, and protect itself while you are locked in. LCKDN never stores or transmits what is on your screen.</string>
-    <string name="admin_explanation">Uninstall protection stops LCKDN from being removed while you are locked in.</string>
+    <string name="admin_explanation">Keeps LCKDN active and protected while you are locked in.</string>
     <string name="admin_disable_locked">LCKDN is locked in. Use the unlock challenge in the app to turn protection off.</string>
     <string name="admin_disable_unlocked">Removing uninstall protection makes it easier to quit.</string>
 

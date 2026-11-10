@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var footer: TextView
     private lateinit var warning: TextView
     private lateinit var alwaysOnButton: MaterialButton
+    private lateinit var adminButton: MaterialButton
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -60,10 +61,12 @@ class MainActivity : AppCompatActivity() {
         footer = findViewById(R.id.footer)
         warning = findViewById(R.id.warning)
         alwaysOnButton = findViewById(R.id.alwaysOnButton)
+        adminButton = findViewById(R.id.adminButton)
 
         lockButton.setOnClickListener { onLockPressed() }
         warning.setOnClickListener { restore() }
         alwaysOnButton.setOnClickListener { promptAlwaysOn() }
+        adminButton.setOnClickListener { promptAdmin() }
         footer.setOnClickListener {
             if (Prefs.isLocked(this)) startActivity(Intent(this, UnlockActivity::class.java))
         }
@@ -113,6 +116,26 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private val adminLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            handler.postDelayed({ render() }, 500)
+        }
+
+    private fun promptAdmin() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.admin_prompt_title)
+            .setMessage(R.string.admin_prompt_body)
+            .setPositiveButton(R.string.admin_open) { _, _ ->
+                try {
+                    adminLauncher.launch(Protection.adminIntent(this))
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Couldn't open that screen on this phone.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.lock_confirm_no, null)
+            .show()
+    }
+
     private fun promptAlwaysOn() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.always_on_title)
@@ -155,6 +178,8 @@ class MainActivity : AppCompatActivity() {
             footer.isClickable = false
         }
         warning.isVisible = locked && !Protection.isHealthy(this)
+        // Uninstall protection is the real block; nudge it hard while locked and it's off.
+        adminButton.isVisible = locked && !Protection.isAdminActive(this)
         // Offer Always-on once the filter is up; it's the one thing the user still turns on by hand.
         alwaysOnButton.isVisible = locked && Protection.isHealthy(this)
     }
