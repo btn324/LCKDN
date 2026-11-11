@@ -8,4 +8,8 @@ captures/
 *.jks
 *.keystore
 signing/
-windows/
+
+# .NET build outputs
+windows/bin/
+windows/obj/
+windows/publish/
