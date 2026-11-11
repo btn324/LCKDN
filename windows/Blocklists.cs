@@ -55,6 +55,20 @@ public static class Blocklists
     };
 
     /// <summary>
+    /// DNS-over-HTTPS resolvers and the Firefox canary domain. Always blocked while locked, so a
+    /// browser can't route lookups around the hosts file through its own encrypted DNS.
+    /// </summary>
+    public static readonly string[] DohEndpoints =
+    {
+        "use-application-dns.net",
+        "dns.google", "dns.google.com", "cloudflare-dns.com", "mozilla.cloudflare-dns.com",
+        "chrome.cloudflare-dns.com", "security.cloudflare-dns.com", "one.one.one.one",
+        "dns.quad9.net", "dns9.quad9.net", "dns.nextdns.io", "doh.opendns.com",
+        "doh.cleanbrowsing.org", "dns.adguard-dns.com", "doh.mullvad.net", "dns.controld.com",
+        "doh.dns.sb", "doh.pub", "dns.alidns.com", "dns0.eu", "freedns.controld.com"
+    };
+
+    /// <summary>
     /// SafeSearch / Restricted Mode via hosts: point each search/host at its "forced-safe" address.
     /// These IPs are published by Google/Microsoft for exactly this purpose. They rarely change,
     /// but if a provider moves them, update here.
@@ -87,6 +101,7 @@ public static class Blocklists
 
     public static IEnumerable<string> ZeroHosts(Flags f)
     {
+        foreach (var d in DohEndpoints) yield return d; // always, so the filter can't be bypassed
         if (f.BlockAdult) foreach (var d in Adult) yield return d;
         if (f.BlockAds) foreach (var d in Ads) yield return d;
         if (f.BlockShortFeeds) foreach (var d in ShortFeeds) yield return d;

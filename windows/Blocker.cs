@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Win32;
 
 namespace Lckdn;
 
@@ -27,18 +28,27 @@ public static class Blocker
     {
         WriteHosts(state.Flags);
 
+        // Without this, Chrome/Edge/Firefox use their own encrypted DNS (DoH) and ignore the
+        // hosts file and system DNS entirely — so nothing would be blocked in the browser.
+        DisableBrowserDoh();
+
         if (state.Flags.FamilyDns)
             SetFamilyDns(state);
         else
             RestoreDns(state);
 
         FlushDns();
+
+        if (!IsApplied())
+            throw new InvalidOperationException(
+                "The hosts file could not be updated. Make sure LCKDN is running as administrator.");
     }
 
     /// <summary>Removes everything LCKDN added and restores the previous DNS.</summary>
     public static void Remove(AppState state)
     {
         RemoveHostsBlock();
+        RestoreBrowserDoh();
         RestoreDns(state);
         FlushDns();
     }
@@ -106,6 +116,52 @@ public static class Blocker
         catch { /* best effort */ }
 
         File.WriteAllText(HostsPath, content, new UTF8Encoding(false));
+    }
+
+    // ---- Browser DoH policies -----------------------------------------------------------------
+
+    // Chromium-family: SOFTWARE\Policies\<vendor>\<browser>\DnsOverHttpsMode = "off"
+    private static readonly string[] ChromiumPolicyKeys =
+    {
+        @"SOFTWARE\Policies\Google\Chrome",
+        @"SOFTWARE\Policies\Microsoft\Edge",
+        @"SOFTWARE\Policies\BraveSoftware\Brave",
+        @"SOFTWARE\Policies\Chromium\Chromium"
+    };
+
+    private const string FirefoxPolicyKey = @"SOFTWARE\Policies\Mozilla\Firefox\DNSOverHTTPS";
+
+    private static void DisableBrowserDoh()
+    {
+        try
+        {
+            foreach (var key in ChromiumPolicyKeys)
+                using (var k = Registry.LocalMachine.CreateSubKey(key))
+                    k?.SetValue("DnsOverHttpsMode", "off", RegistryValueKind.String);
+
+            using var ff = Registry.LocalMachine.CreateSubKey(FirefoxPolicyKey);
+            ff?.SetValue("Enabled", 0, RegistryValueKind.DWord);
+            ff?.SetValue("Locked", 1, RegistryValueKind.DWord);
+        }
+        catch { /* best effort; hosts still blocks apps that use the system resolver */ }
+    }
+
+    private static void RestoreBrowserDoh()
+    {
+        try
+        {
+            foreach (var key in ChromiumPolicyKeys)
+                using (var k = Registry.LocalMachine.OpenSubKey(key, writable: true))
+                    if (k?.GetValue("DnsOverHttpsMode") != null) k.DeleteValue("DnsOverHttpsMode", false);
+
+            using var ff = Registry.LocalMachine.OpenSubKey(FirefoxPolicyKey, writable: true);
+            if (ff != null)
+            {
+                if (ff.GetValue("Enabled") != null) ff.DeleteValue("Enabled", false);
+                if (ff.GetValue("Locked") != null) ff.DeleteValue("Locked", false);
+            }
+        }
+        catch { /* best effort */ }
     }
 
     // ---- DNS ----------------------------------------------------------------------------------

@@ -134,6 +134,10 @@ public sealed class MainForm : Form
             _state.CooldownStartUtc = null;
             _state.Save();
             Blocker.Apply(_state);
+            MessageBox.Show(this,
+                "Protection is on.\n\nClose and reopen any browsers you have open (Chrome, Edge, Firefox…) " +
+                "so they stop using their own encrypted DNS — otherwise blocking won't take effect in them.",
+                "Locked in", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
