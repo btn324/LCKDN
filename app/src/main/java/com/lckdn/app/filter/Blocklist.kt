@@ -174,6 +174,18 @@ object Blocklist {
         return isAdultDomain(host)
     }
 
+    /** Sites blocked outright when "Block Reddit, X & Telegram" is on. */
+    private val socialHosts = setOf(
+        "reddit.com", "redd.it", "redditmedia.com", "redditstatic.com",
+        "twitter.com", "x.com", "t.co", "twimg.com",
+        "telegram.org", "telegram.me", "t.me", "telegram.dog", "telega.one"
+    )
+
+    fun isSocialHost(raw: String): Boolean {
+        val host = hostOf(fold(raw)) ?: return false
+        return matchesSuffix(host, socialHosts)
+    }
+
     /**
      * Unambiguous porn terms: strong enough that one occurrence anywhere means the page is adult.
      * Everything else in [adultKeywords] only counts toward the two-hit rule in [isExplicitContent],

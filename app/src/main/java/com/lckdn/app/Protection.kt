@@ -95,6 +95,7 @@ object Protection {
         if (Prefs.flag(c, Prefs.BLOCK_SHORTS)) parts += "Shorts"
         if (Prefs.flag(c, Prefs.BLOCK_REELS)) parts += "Reels"
         if (Prefs.flag(c, Prefs.BLOCK_TIKTOK)) parts += "TikTok"
+        if (Prefs.flag(c, Prefs.BLOCK_SOCIAL)) parts += "Reddit/X/Telegram"
         return parts.joinToString("  ·  ") + " blocked"
     }
 }

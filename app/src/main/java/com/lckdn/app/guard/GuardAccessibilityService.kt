@@ -40,6 +40,16 @@ class GuardAccessibilityService : AccessibilityService() {
          * clear explicit searches, close explicit posts by their visible text, and back out of
          * "sensitive / 18+" age gates (which sit in front of explicit media).
          */
+        /** Apps the user chose to block completely (sent home on sight while locked). */
+        val SOCIAL_APPS = setOf(
+            "com.reddit.frontpage", "com.reddit.scribe",
+            "ml.docilealligator.infinityforreddit", "com.rubenmayayo.reddit", "me.ccrama.redditslide",
+            "com.laurencedawson.reddit_sync", "com.andrewshu.android.reddit",
+            "com.twitter.android", "com.twitter.android.lite",
+            "org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram",
+            "org.telegram.plus", "nekox.messenger", "org.telegram.messenger.beta"
+        )
+
         val FEED_APPS = setOf(
             "com.reddit.frontpage", "com.reddit.scribe",           // Reddit
             "ml.docilealligator.infinityforreddit", "com.rubenmayayo.reddit", "me.ccrama.redditslide",
@@ -206,6 +216,9 @@ class GuardAccessibilityService : AccessibilityService() {
         if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
             return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
         }
+        if (pkg in SOCIAL_APPS && Prefs.flag(this, Prefs.BLOCK_SOCIAL)) {
+            return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        }
 
         val root = rootInActiveWindow ?: return
         val rootPkg = root.packageName?.toString() ?: pkg
@@ -293,8 +306,8 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
-            pkg in FACEBOOK || pkg in FEED_APPS || pkg in BYPASS_APPS || pkg in SETTINGS ||
-            pkg in BROWSERS
+            pkg in FACEBOOK || pkg in FEED_APPS || pkg in SOCIAL_APPS || pkg in BYPASS_APPS ||
+            pkg in SETTINGS || pkg in BROWSERS
 
     /**
      * Reddit, X, Telegram and other feed apps: clear explicit searches, close explicit posts by
@@ -397,10 +410,16 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
         val strict = Prefs.flag(this, Prefs.STRICT_BROWSER)
+        val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
         for (id in BROWSERS[pkg].orEmpty()) {
             val nodes = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") ?: continue
             for (node in nodes) {
                 val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+                if (blockSocial && Blocklist.isSocialHost(text)) {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    showBlocked(getString(R.string.page_blocked))
+                    return
+                }
                 val explicit = if (strict) Blocklist.isExplicitText(text) else Blocklist.isExplicitHost(text)
                 if (!explicit) continue
                 if (node.isFocused && node.isEditable) {

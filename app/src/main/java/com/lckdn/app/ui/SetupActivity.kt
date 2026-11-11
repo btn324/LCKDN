@@ -173,6 +173,11 @@ class SetupActivity : AppCompatActivity() {
         addToggle("Reels (Instagram + Facebook)", "Hides the Reels tab and backs out of any Reel in Instagram and Facebook. Feeds, Stories and DMs keep working.", Prefs.BLOCK_REELS)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
+            "Block Reddit, X & Telegram",
+            "Closes these apps and their websites completely. They are full of image NSFW the on-screen filter can't read, so this blocks them outright.",
+            Prefs.BLOCK_SOCIAL
+        )
+        addToggle(
             "Strict browser filter",
             "Also blocks explicit words in addresses and searches, not just known sites.",
             Prefs.STRICT_BROWSER
