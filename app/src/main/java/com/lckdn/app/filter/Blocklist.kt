@@ -175,10 +175,37 @@ object Blocklist {
     }
 
     /**
-     * A larger blob of on-screen text (page title + visible labels). Used by the screen guard
-     * to catch explicit pages and image results even on sites not in the domain list.
+     * Unambiguous porn terms: strong enough that one occurrence anywhere means the page is adult.
+     * Everything else in [adultKeywords] only counts toward the two-hit rule in [isExplicitContent],
+     * so a single ambiguous word in a comment or menu no longer triggers a black-out.
      */
-    fun isExplicitContent(raw: String): Boolean = containsAdultKeyword(fold(decode(raw)))
+    private val strongCore = listOf(
+        "porn", "xxx", "hentai", "onlyfans", "chaturbate", "pornhub", "xvideos", "xnxx", "xhamster",
+        "redtube", "youporn", "brazzers", "bangbros", "spankbang", "stripchat", "bongacams",
+        "livejasmin", "myfreecams", "eporner", "nhentai", "blowjob", "handjob", "deepthroat",
+        "cumshot", "creampie", "gangbang", "bukkake", "masturbat", "deepnude", "camwhore",
+        "sexvideo", "xxxvideo", "pornvideo", "pornpic", "nudepic", "bigtits", "bigboobs", "hugetits",
+        "szexvideo", "szexfilm", "szexkep", "pornofilm", "pornokep", "pornovideo", "meztelen",
+        "mellbimbo", "maszturbal", "bokep", "ngentot", "chudai", "buceta"
+    )
+
+    /**
+     * A larger blob of on-screen text (page title + visible labels). Used by the screen guard to
+     * catch explicit pages and image results even on unknown sites. To avoid false black-outs it
+     * fires only on a strong term, or on two or more distinct adult keywords.
+     */
+    fun isExplicitContent(raw: String): Boolean {
+        val f = fold(decode(raw))
+        if (strongCore.any { hasKeyword(f, it) }) return true
+        var hits = 0
+        for (kw in adultKeywords) {
+            if (hasKeyword(f, kw)) {
+                hits++
+                if (hits >= 2) return true
+            }
+        }
+        return false
+    }
 
     private fun decode(raw: String): String =
         try {
@@ -227,13 +254,15 @@ object Blocklist {
         }
     }
 
-    private fun containsAdultKeyword(folded: String): Boolean {
-        for (kw in adultKeywords) {
-            var idx = folded.indexOf(kw)
-            while (idx >= 0) {
-                if (!isExcused(folded, idx, kw.length)) return true
-                idx = folded.indexOf(kw, idx + 1)
-            }
+    private fun containsAdultKeyword(folded: String): Boolean =
+        adultKeywords.any { hasKeyword(folded, it) }
+
+    /** True if [kw] occurs in [folded] at a position not inside an innocent word. */
+    private fun hasKeyword(folded: String, kw: String): Boolean {
+        var idx = folded.indexOf(kw)
+        while (idx >= 0) {
+            if (!isExcused(folded, idx, kw.length)) return true
+            idx = folded.indexOf(kw, idx + 1)
         }
         return false
     }

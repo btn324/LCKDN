@@ -377,7 +377,7 @@ class GuardAccessibilityService : AccessibilityService() {
         // Watching a regular video: if its title is explicit, leave the player.
         if (hasVisibleId(root, YT_PLAYER_IDS)) {
             val title = firstTextOf(root, YT_TITLE_IDS)
-            if (title != null && Blocklist.isExplicitContent(title)) {
+            if (title != null && Blocklist.isExplicitText(title)) {
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 showBlocked(getString(R.string.video_blocked))
             }
