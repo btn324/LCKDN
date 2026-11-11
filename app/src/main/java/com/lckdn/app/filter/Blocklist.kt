@@ -78,8 +78,8 @@ object Blocklist {
         // Hungarian (accent-stripped forms included)
         "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cici", "cicis", "cicik", "csocs",
         "csocsos", "mellbimbo", "punci", "pina", "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc",
-        "maszturbal", "merevedes", "orgazmus", "szopas", "fasza", "geci", "didko", "pornofilm",
-        "pornokep", "pornovideo", "cickok", "szexi no",
+        "maszturbal", "merevedes", "orgazmus", "szopas", "fasza", "geci", "didko", "segg", "pornofilm",
+        "pornokep", "pornovideo", "cickok", "szexi no", "dekolt", "szexi csaj", "bugyis",
         // German
         "nackt", "titten", "ficken", "muschi", "schwanz", "geile", "nackte", "nutte",
         // French
