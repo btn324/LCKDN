@@ -39,6 +39,16 @@ object Blocklist {
         "leakedzone.com", "internetchicks.com", "influencersgonewild.com", "thotslife.com",
         "pichunter.com", "metart.com", "yespornplease.com", "cliphunter.com",
         "boobpedia.com", "babepedia.com", "indexxx.com", "theporndude.com", "pornmd.com",
+        // hentai / doujin boards and more tubes
+        "e-hentai.org", "exhentai.org", "hitomi.la", "hentaifox.com", "hentaihere.com",
+        "hanime.tv", "hentaicity.com", "asmhentai.com", "3hentai.net", "tsumino.com", "pururin.to",
+        "multporn.net", "porncomix.info", "8muses.com", "comicsarmy.com", "myreadingmanga.info",
+        "simply-hentai.com", "furaffinity.net", "u18chan.com", "rule34hentai.net",
+        "camwhores.tv", "camwhoresbay.com", "recurbate.com", "cambro.tv", "nudostar.com",
+        "nudostar.tv", "dirtyship.com", "thotslife.com", "fapodrop.com", "fapello.su",
+        "leakedzone.com", "faponic.com", "hotleak.vip", "porn3dx.com", "sex3dcartoon.com",
+        "yespornplease.net", "pornhub.org", "spankbang.party", "javtiful.com", "highporn.net",
+        "watchporn.to", "freeones.com", "babepedia.org", "thenip.net", "nsfw.xxx", "nsfwalbum.com",
         // Adult ad networks (pop-unders and redirect ads)
         "exoclick.com", "exosrv.com", "exdynsrv.com", "juicyads.com", "trafficjunky.com",
         "trafficjunky.net", "trafficstars.com", "tsyndicate.com", "plugrush.com",
@@ -61,7 +71,10 @@ object Blocklist {
         "erotic", "erotica", "fetish", "bdsm", "jerkoff", "masturbat", "redgifs", "hanime",
         "gonewild", "deepnude", "undress", "escort", "camsex", "sexting", "nudify", "upskirt",
         "cameltoe", "softcore", "lewd", "ecchi", "ahegao", "futanari", "doujin", "cumming",
-        "orgasm", "dildo", "blowbang", "titjob", "fap ", "coom",
+        "orgasm", "dildo", "blowbang", "titjob", "fap ", "coom", "bigtits", "bigboobs", "hugetits",
+        "sideboob", "underboob", "braless", "topless", "nipslip", "nudegirl", "nakedgirl",
+        "camwhore", "recurbate", "nudostar", "dirtyship", "leaked nudes", "onlyfans leak",
+        "sexvideo", "sexphoto", "xxxvideo", "pornvideo", "pornpic", "sexpic", "nudepic",
         // Hungarian (accent-stripped forms included)
         "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cici", "cicis", "cicik", "csocs",
         "csocsos", "mellbimbo", "punci", "pina", "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc",

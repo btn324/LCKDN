@@ -139,6 +139,7 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var cover: TabCover? = null
+    private var censor: CensorOverlay? = null
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
@@ -153,6 +154,7 @@ class GuardAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         cover = TabCover(this)
+        censor = CensorOverlay(this)
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -160,11 +162,13 @@ class GuardAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
         cover?.hide()
+        censor?.hide()
         super.onDestroy()
     }
 
     override fun onInterrupt() {
         cover?.hide()
+        censor?.hide()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -425,7 +429,11 @@ class GuardAccessibilityService : AccessibilityService() {
         val text = collectText(root)
         val aboutUs = text.contains("lckdn")
         if (aboutUs && DANGER.any { text.contains(it) }) {
-            act(GLOBAL_ACTION_HOME, getString(R.string.tamper_blocked))
+            // Dismiss the dialog and leave to the home screen, immediately.
+            lastAction = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(getString(R.string.tamper_blocked))
             return
         }
         // A custom Private DNS hostname would route lookups around the filter.
@@ -458,6 +466,7 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun showBlocked(reason: String) {
         lastAction = SystemClock.uptimeMillis()
+        censor?.flash()   // instantly black out the screen before anything else can be seen
         try {
             startActivity(
                 Intent(this, BlockedActivity::class.java)
