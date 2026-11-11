@@ -104,6 +104,15 @@ object Blocklist {
         "mujun", "yadong"
     )
 
+    /**
+     * Terms matched only as a whole word, because as a substring they collide with innocent words.
+     * In Hungarian, "mellek" (breasts) and "mellék-" (side / auxiliary, as in melléklet, mellékhatás)
+     * fold to the same letters — so "mellek" is blocked only when it stands alone, not as a prefix.
+     */
+    private val boundaryKeywords = listOf(
+        "mellek", "mell", "mellei", "mellem", "melleit", "melleid", "cicije", "breasts", "boob"
+    )
+
     /** Longer words that innocently contain a blocked substring. */
     private val keywordExceptions = listOf(
         "essex", "sussex", "middlesex", "wessex", "sexton", "sextant", "sexagen", "sexagesima",
@@ -216,6 +225,12 @@ object Blocklist {
                 if (hits >= 2) return true
             }
         }
+        for (w in boundaryKeywords) {
+            if (hasWord(f, w)) {
+                hits++
+                if (hits >= 2) return true
+            }
+        }
         return false
     }
 
@@ -267,7 +282,7 @@ object Blocklist {
     }
 
     private fun containsAdultKeyword(folded: String): Boolean =
-        adultKeywords.any { hasKeyword(folded, it) }
+        adultKeywords.any { hasKeyword(folded, it) } || boundaryKeywords.any { hasWord(folded, it) }
 
     /** True if [kw] occurs in [folded] at a position not inside an innocent word. */
     private fun hasKeyword(folded: String, kw: String): Boolean {
@@ -275,6 +290,19 @@ object Blocklist {
         while (idx >= 0) {
             if (!isExcused(folded, idx, kw.length)) return true
             idx = folded.indexOf(kw, idx + 1)
+        }
+        return false
+    }
+
+    /** True if [word] appears as a standalone word (not glued to more letters/digits). */
+    private fun hasWord(folded: String, word: String): Boolean {
+        var idx = folded.indexOf(word)
+        while (idx >= 0) {
+            val before = if (idx == 0) ' ' else folded[idx - 1]
+            val afterPos = idx + word.length
+            val after = if (afterPos >= folded.length) ' ' else folded[afterPos]
+            if (!before.isLetterOrDigit() && !after.isLetterOrDigit()) return true
+            idx = folded.indexOf(word, idx + 1)
         }
         return false
     }
