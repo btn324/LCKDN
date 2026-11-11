@@ -67,7 +67,9 @@ class GuardAccessibilityService : AccessibilityService() {
         )
 
         val YT_SHORTS_IDS = listOf(
-            "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root"
+            "reel_recycler", "reel_player_page_container", "reel_watch_player", "reel_watch_fragment_root",
+            "reel_player_underlay", "reel_progress_bar", "shorts_player", "shorts_container",
+            "shorts_video_cell", "reel_player_overlay", "reel_dyn_container"
         ).map { "$YOUTUBE:id/$it" }
 
         /** The regular video player (not Shorts). */
@@ -83,7 +85,9 @@ class GuardAccessibilityService : AccessibilityService() {
         val YT_SEARCH_IDS = listOf("search_edit_text", "big_header_search_edit_text").map { "$YOUTUBE:id/$it" }
 
         val IG_REELS_IDS = listOf(
-            "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout"
+            "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout",
+            "clips_video_container", "clips_swipe_refresh_container", "clips_viewer_media_container",
+            "reel_viewer_media_container", "clips_tab_root"
         ).map { "$INSTAGRAM:id/$it" }
 
         /** Bottom-bar tab buttons to hide. */
@@ -208,7 +212,15 @@ class GuardAccessibilityService : AccessibilityService() {
             lastCheck[pkg] = now
         }
 
-        if (pkg == YOUTUBE || pkg == INSTAGRAM || pkg in FACEBOOK) updateTabCover()
+        // Tab-cover must never be able to throw past this point, or it would stop the
+        // Shorts / Reels blocking below from ever running.
+        if (pkg == YOUTUBE || pkg == INSTAGRAM || pkg in FACEBOOK) {
+            try {
+                updateTabCover()
+            } catch (_: Exception) {
+                cover?.hide()
+            }
+        }
         if (!isTamper && now - lastAction < 900) return
 
         // Whole-app blocks don't need the view tree.
@@ -225,7 +237,9 @@ class GuardAccessibilityService : AccessibilityService() {
         try {
             when {
                 rootPkg == YOUTUBE -> {
-                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) && hasVisibleId(root, YT_SHORTS_IDS)) {
+                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) &&
+                        (hasVisibleId(root, YT_SHORTS_IDS) || isImmersiveShortVideo(root, "short"))
+                    ) {
                         act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
                     } else {
                         checkYouTube(root)
@@ -233,7 +247,9 @@ class GuardAccessibilityService : AccessibilityService() {
                 }
 
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
-                    if (hasVisibleId(root, IG_REELS_IDS)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    if (hasVisibleId(root, IG_REELS_IDS) || isImmersiveReel(root)) {
+                        act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    }
 
                 rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) -> {
                     if (isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
@@ -339,13 +355,20 @@ class GuardAccessibilityService : AccessibilityService() {
      * Facebook hides its view ids, so a Reel is recognised by its full-screen immersive video:
      * a tall node (most of the screen) whose description mentions a reel or its overlay controls.
      */
-    private fun isImmersiveReel(root: AccessibilityNodeInfo): Boolean {
+    private fun isImmersiveReel(root: AccessibilityNodeInfo): Boolean = isImmersiveShortVideo(root, "reel")
+
+    /**
+     * A full-screen vertical short-video player, recognised by a tall node (most of the screen)
+     * whose description mentions the feed name ([keyword] = "reel" or "short"). Used as a fallback
+     * when the app's view ids change, and for apps (Facebook) that hide their ids entirely.
+     */
+    private fun isImmersiveShortVideo(root: AccessibilityNodeInfo, keyword: String): Boolean {
         val screenH = resources.displayMetrics.heightPixels
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var seen = 0
         var tallVideo = false
-        var reelWords = 0
+        var words = 0
         val rect = Rect()
         while (stack.isNotEmpty() && seen < 500) {
             val node = stack.removeLast()
@@ -354,12 +377,12 @@ class GuardAccessibilityService : AccessibilityService() {
             if (desc != null && node.isVisibleToUser) {
                 node.getBoundsInScreen(rect)
                 val tall = rect.height() > screenH * 0.6f
-                if (tall && (desc.contains("reel") || (node.className?.contains("TextureView") == true))) tallVideo = true
-                if (desc.startsWith("reel") || desc.contains("reel by") || desc.contains("reels")) reelWords++
+                if (tall && (desc.contains(keyword) || (node.className?.contains("TextureView") == true))) tallVideo = true
+                if (desc.contains(keyword)) words++
             }
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
-        return tallVideo && reelWords >= 1
+        return tallVideo && words >= 1
     }
 
     private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
