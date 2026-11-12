@@ -79,7 +79,8 @@ object Blocklist {
         "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cici", "cicis", "cicik", "csocs",
         "csocsos", "mellbimbo", "punci", "pina", "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc",
         "maszturbal", "merevedes", "orgazmus", "szopas", "fasza", "geci", "didko", "segg", "pornofilm",
-        "pornokep", "pornovideo", "cickok", "szexi no", "dekolt", "szexi csaj", "bugyis",
+        "pornokep", "pornovideo", "cickok", "szexi no", "dekolt", "szexi csaj", "bugyis", "popsi",
+        "booty", "thicc", "twerk", "bigass", "nagy fenek", "harisnyas",
         // German
         "nackt", "titten", "ficken", "muschi", "schwanz", "geile", "nackte", "nutte",
         // French
@@ -110,7 +111,8 @@ object Blocklist {
      * fold to the same letters — so "mellek" is blocked only when it stands alone, not as a prefix.
      */
     private val boundaryKeywords = listOf(
-        "mellek", "mell", "mellei", "mellem", "melleit", "melleid", "cicije", "breasts", "boob"
+        "mellek", "mell", "mellei", "mellem", "melleit", "melleid", "cicije", "breasts", "boob",
+        "ass", "butt", "fenek", "popo"
     )
 
     /** Longer words that innocently contain a blocked substring. */
