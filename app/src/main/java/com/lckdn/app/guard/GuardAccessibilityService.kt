@@ -84,10 +84,12 @@ class GuardAccessibilityService : AccessibilityService() {
 
         val YT_SEARCH_IDS = listOf("search_edit_text", "big_header_search_edit_text").map { "$YOUTUBE:id/$it" }
 
+        // Instagram calls Reels "clips" internally. (Its "reel_viewer" is the STORIES viewer, so it
+        // must NOT be matched here, or Stories would be blocked too.)
         val IG_REELS_IDS = listOf(
             "clips_viewer_view_pager", "clips_viewer_root", "root_clips_layout",
             "clips_video_container", "clips_swipe_refresh_container", "clips_viewer_media_container",
-            "reel_viewer_media_container", "clips_tab_root"
+            "clips_tab_root"
         ).map { "$INSTAGRAM:id/$it" }
 
         /** Bottom-bar tab buttons to hide. */
@@ -247,7 +249,9 @@ class GuardAccessibilityService : AccessibilityService() {
                 }
 
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
-                    if (hasVisibleId(root, IG_REELS_IDS) || isImmersiveReel(root)) {
+                    // clips_* ids only. No "reel" content fallback here, since Instagram Stories
+                    // are also internally "reels" and must stay usable.
+                    if (hasVisibleId(root, IG_REELS_IDS)) {
                         act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
                     }
 
