@@ -156,7 +156,7 @@ class GuardAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var cover: TabCover? = null
     private var censor: CensorOverlay? = null
-    private var suggestedCover: FeedCover? = null
+    private var lastSuggestedScroll = 0L
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
@@ -172,7 +172,6 @@ class GuardAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         cover = TabCover(this)
         censor = CensorOverlay(this)
-        suggestedCover = FeedCover(this)
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -181,21 +180,18 @@ class GuardAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(watchdog)
         cover?.hide()
         censor?.hide()
-        suggestedCover?.hide()
         super.onDestroy()
     }
 
     override fun onInterrupt() {
         cover?.hide()
         censor?.hide()
-        suggestedCover?.hide()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         if (!Prefs.isLocked(this)) {
             cover?.hide()
-            suggestedCover?.hide()
             return
         }
         val pkg = event.packageName?.toString() ?: return
@@ -230,12 +226,10 @@ class GuardAccessibilityService : AccessibilityService() {
         }
         if (pkg == INSTAGRAM) {
             try {
-                updateSuggestedCover()
+                skipSuggestedPost()
             } catch (_: Exception) {
-                suggestedCover?.hide()
+                // view tree changed under us; next event will retry
             }
-        } else {
-            suggestedCover?.hide()
         }
         if (!isTamper && now - lastAction < 900) return
 
@@ -317,35 +311,30 @@ class GuardAccessibilityService : AccessibilityService() {
     )
 
     /**
-     * Covers an Instagram "Suggested" post in the home feed so only posts from people you follow
-     * are visible. The cover passes touches through, so scrolling still works. Best-effort: it keys
-     * off the "Suggested" header, so an exactly-followed-only feed (the app's own "Following" view)
-     * is the fully reliable option.
+     * When a "Suggested" post surfaces in the Instagram home feed, scroll the feed forward so it
+     * passes by instead of sitting there — the closest an outside app can get to "remove it".
+     * A short cooldown keeps it from running away. Instagram's own "Following" feed is the only
+     * way to stop these being injected at all.
      */
-    private fun updateSuggestedCover() {
-        val c = suggestedCover ?: return
-        if (!Prefs.flag(this, Prefs.HIDE_IG_SUGGESTED)) {
-            c.hide()
-            return
-        }
+    private fun skipSuggestedPost() {
+        if (!Prefs.flag(this, Prefs.HIDE_IG_SUGGESTED)) return
         val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != INSTAGRAM) {
-            c.hide()
-            return
-        }
-        val dm = resources.displayMetrics
-        val screenW = dm.widthPixels
-        val screenH = dm.heightPixels
+        if (root.packageName?.toString() != INSTAGRAM) return
 
-        val labelRect = findSuggestedHeader(root, screenH) ?: run { c.hide(); return }
-        val top = (labelRect.top - (6 * dm.density).toInt()).coerceAtLeast(0)
-        // A suggested post is roughly a square media plus header and caption/actions.
-        val coverHeight = screenW + (320 * dm.density).toInt()
-        val bottom = (top + coverHeight).coerceAtMost(screenH)
-        c.show(Rect(0, top, screenW, bottom), 0xFF000000.toInt())
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSuggestedScroll < 850) return
+
+        val screenH = resources.displayMetrics.heightPixels
+        // Act only while a suggested header is in the upper part of the feed (freshly reached).
+        if (!hasSuggestedHeader(root, (screenH * 0.65f).toInt())) return
+
+        val scroller = findScrollable(root) ?: return
+        if (scroller.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+            lastSuggestedScroll = now
+        }
     }
 
-    private fun findSuggestedHeader(root: AccessibilityNodeInfo, screenH: Int): Rect? {
+    private fun hasSuggestedHeader(root: AccessibilityNodeInfo, maxTop: Int): Boolean {
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var seen = 0
@@ -357,13 +346,36 @@ class GuardAccessibilityService : AccessibilityService() {
                 val text = (node.text?.toString() ?: node.contentDescription?.toString())?.lowercase()
                 if (text != null && text.length < 40 && suggestedLabels.any { text == it || text.startsWith(it) }) {
                     node.getBoundsInScreen(rect)
-                    // Only act on a header in the scrollable feed area (not the very bottom bar).
-                    if (rect.top in 1 until (screenH * 0.8f).toInt()) return Rect(rect)
+                    if (rect.top in 1 until maxTop) return true
                 }
             }
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
-        return null
+        return false
+    }
+
+    /** The largest visible scrollable node — the feed's list. */
+    private fun findScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        var best: AccessibilityNodeInfo? = null
+        var bestArea = 0
+        val rect = Rect()
+        while (stack.isNotEmpty() && seen < 600) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isScrollable && node.isVisibleToUser) {
+                node.getBoundsInScreen(rect)
+                val area = rect.width() * rect.height()
+                if (area > bestArea) {
+                    bestArea = area
+                    best = node
+                }
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return best
     }
 
     /** Bounds of a bottom-bar tab: by view id first, then by its label/description. */
