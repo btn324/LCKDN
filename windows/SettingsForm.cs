@@ -49,8 +49,6 @@ public sealed class SettingsForm : Form
             _state.Flags.BlockShortFeeds, v => _state.Flags.BlockShortFeeds = v));
         flow.Controls.Add(Toggle("Block Reddit, X & Telegram (web)", "Blocks these sites in every browser.",
             _state.Flags.BlockSocial, v => _state.Flags.BlockSocial = v));
-        flow.Controls.Add(Toggle("Family-safe DNS", "Also routes DNS through Cloudflare for Families (1.1.1.3).",
-            _state.Flags.FamilyDns, v => _state.Flags.FamilyDns = v));
 
         var ok = new Button
         {

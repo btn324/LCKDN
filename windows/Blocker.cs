@@ -23,20 +23,21 @@ public static class Blocker
         catch { return false; }
     }
 
-    /// <summary>Writes the block into the hosts file and (optionally) switches DNS.</summary>
+    /// <summary>
+    /// Writes the block into the hosts file. It deliberately does NOT change your system DNS —
+    /// doing so made game/CDN downloads (Epic, Steam) pick a far-away server and crawl. All
+    /// blocking and SafeSearch is done through the hosts file, which leaves downloads untouched.
+    /// </summary>
     public static void Apply(AppState state)
     {
         WriteHosts(state.Flags);
 
         // Without this, Chrome/Edge/Firefox use their own encrypted DNS (DoH) and ignore the
-        // hosts file and system DNS entirely — so nothing would be blocked in the browser.
+        // hosts file entirely — so nothing would be blocked in the browser.
         DisableBrowserDoh();
 
-        if (state.Flags.FamilyDns)
-            SetFamilyDns(state);
-        else
-            RestoreDns(state);
-
+        // If an older version switched DNS to a family resolver, put it back now.
+        RestoreDns(state);
         FlushDns();
 
         if (!IsApplied())
@@ -44,11 +45,19 @@ public static class Blocker
                 "The hosts file could not be updated. Make sure LCKDN is running as administrator.");
     }
 
-    /// <summary>Removes everything LCKDN added and restores the previous DNS.</summary>
+    /// <summary>Removes everything LCKDN added.</summary>
     public static void Remove(AppState state)
     {
         RemoveHostsBlock();
         RestoreBrowserDoh();
+        RestoreDns(state);
+        FlushDns();
+    }
+
+    /// <summary>Heals machines where an older LCKDN left a family DNS set. Safe to call anytime.</summary>
+    public static void RestoreOriginalDns(AppState state)
+    {
+        if (state.SavedDns.Count == 0) return;
         RestoreDns(state);
         FlushDns();
     }
@@ -166,19 +175,6 @@ public static class Blocker
 
     // ---- DNS ----------------------------------------------------------------------------------
 
-    private static void SetFamilyDns(AppState state)
-    {
-        foreach (var alias in ActiveAdapterAliases())
-        {
-            if (!state.SavedDns.ContainsKey(alias))
-                state.SavedDns[alias] = GetDns(alias); // remember what was there (empty = DHCP)
-
-            RunNetsh($"interface ipv4 set dnsservers name=\"{alias}\" static {Blocklists.FamilyDnsV4[0]} primary");
-            RunNetsh($"interface ipv4 add dnsservers name=\"{alias}\" {Blocklists.FamilyDnsV4[1]} index=2");
-        }
-        state.Save();
-    }
-
     private static void RestoreDns(AppState state)
     {
         foreach (var (alias, servers) in state.SavedDns)
@@ -196,40 +192,6 @@ public static class Blocker
         }
         state.SavedDns.Clear();
         state.Save();
-    }
-
-    private static IEnumerable<string> ActiveAdapterAliases()
-    {
-        var result = new List<string>();
-        try
-        {
-            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
-                if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
-                var desc = ni.Description.ToLowerInvariant();
-                if (desc.Contains("virtual") || desc.Contains("vpn") || desc.Contains("radmin") ||
-                    desc.Contains("hyper-v") || desc.Contains("loopback")) continue;
-                result.Add(ni.Name);
-            }
-        }
-        catch { /* best effort */ }
-        return result;
-    }
-
-    private static string[] GetDns(string alias)
-    {
-        try
-        {
-            var ni = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                .FirstOrDefault(n => n.Name == alias);
-            if (ni == null) return Array.Empty<string>();
-            return ni.GetIPProperties().DnsAddresses
-                .Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                .Select(a => a.ToString())
-                .ToArray();
-        }
-        catch { return Array.Empty<string>(); }
     }
 
     private static void RunNetsh(string args) => RunHidden("netsh.exe", args);

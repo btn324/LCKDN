@@ -91,6 +91,9 @@ public sealed class MainForm : Form
     /// <summary>If we think we're locked but the hosts block is gone (manual edit), re-apply it.</summary>
     private void ReconcileOnStartup()
     {
+        // Heal machines where an older LCKDN switched DNS (which slowed game/CDN downloads).
+        try { Blocker.RestoreOriginalDns(_state); } catch { /* best effort */ }
+
         if (_state.Locked && !Blocker.IsApplied())
         {
             try { Blocker.Apply(_state); } catch { /* shown in status */ }

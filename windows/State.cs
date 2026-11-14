@@ -10,7 +10,8 @@ public sealed class Flags
     public bool SafeSearch { get; set; } = true;   // Google/Bing/DuckDuckGo + YouTube Restricted
     public bool BlockShortFeeds { get; set; } = true; // youtube shorts / instagram reels / tiktok hosts
     public bool BlockSocial { get; set; } = false;  // reddit / x / telegram web, off by default
-    public bool FamilyDns { get; set; } = true;     // set Cloudflare for Families DNS
+    // Kept for back-compat with old saved state; no longer used (switching DNS broke game downloads).
+    public bool FamilyDns { get; set; } = false;
 }
 
 /// <summary>Persistent app state, stored in ProgramData so it survives restarts.</summary>
