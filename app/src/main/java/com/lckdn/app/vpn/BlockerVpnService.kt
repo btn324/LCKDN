@@ -45,6 +45,16 @@ class BlockerVpnService : VpnService() {
         /** Cloudflare for Families: adult content + malware. */
         private val CLOUDFLARE_FAMILY = listOf("1.1.1.3", "1.0.0.3")
 
+        /** Streaming apps kept out of the DNS tunnel so playback isn't broken. */
+        private val EXCLUDED_APPS = listOf(
+            "com.netflix.mediaclient",            // Netflix
+            "com.disney.disneyplus",              // Disney+
+            "com.hbo.hbonow", "com.wbd.stream",   // HBO Max / Max
+            "com.amazon.avod.thirdpartyclient",   // Prime Video
+            "com.google.android.videos",          // Google TV / Play Movies
+            "com.spotify.music"                   // Spotify
+        )
+
         @Volatile
         var running = false
             private set
@@ -117,6 +127,15 @@ class BlockerVpnService : VpnService() {
         try {
             builder.addDisallowedApplication(packageName)
         } catch (_: Exception) {
+        }
+        // Streaming apps break when their DNS is filtered (they pick a bad/undeliverable CDN node),
+        // and they never serve adult content, so keep them out of the tunnel entirely.
+        for (app in EXCLUDED_APPS) {
+            try {
+                builder.addDisallowedApplication(app)
+            } catch (_: Exception) {
+                // App not installed — ignore.
+            }
         }
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(false)
 

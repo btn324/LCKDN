@@ -156,6 +156,7 @@ class GuardAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var cover: TabCover? = null
     private var censor: CensorOverlay? = null
+    private var suggestedCover: FeedCover? = null
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
@@ -171,6 +172,7 @@ class GuardAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         cover = TabCover(this)
         censor = CensorOverlay(this)
+        suggestedCover = FeedCover(this)
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -179,18 +181,21 @@ class GuardAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(watchdog)
         cover?.hide()
         censor?.hide()
+        suggestedCover?.hide()
         super.onDestroy()
     }
 
     override fun onInterrupt() {
         cover?.hide()
         censor?.hide()
+        suggestedCover?.hide()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         if (!Prefs.isLocked(this)) {
             cover?.hide()
+            suggestedCover?.hide()
             return
         }
         val pkg = event.packageName?.toString() ?: return
@@ -222,6 +227,15 @@ class GuardAccessibilityService : AccessibilityService() {
             } catch (_: Exception) {
                 cover?.hide()
             }
+        }
+        if (pkg == INSTAGRAM) {
+            try {
+                updateSuggestedCover()
+            } catch (_: Exception) {
+                suggestedCover?.hide()
+            }
+        } else {
+            suggestedCover?.hide()
         }
         if (!isTamper && now - lastAction < 900) return
 
@@ -295,6 +309,62 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     private data class TabSpec(val label: String, val ids: List<String>, val dark: Int, val enabled: Boolean)
+
+    /** Headers that mark a recommended post injected into the Instagram home feed. */
+    private val suggestedLabels = listOf(
+        "suggested for you", "suggested post", "suggested posts",
+        "javasolt neked", "neked ajanlott", "neked ajanljuk", "ajanlott bejegyzes", "javaslat neked"
+    )
+
+    /**
+     * Covers an Instagram "Suggested" post in the home feed so only posts from people you follow
+     * are visible. The cover passes touches through, so scrolling still works. Best-effort: it keys
+     * off the "Suggested" header, so an exactly-followed-only feed (the app's own "Following" view)
+     * is the fully reliable option.
+     */
+    private fun updateSuggestedCover() {
+        val c = suggestedCover ?: return
+        if (!Prefs.flag(this, Prefs.HIDE_IG_SUGGESTED)) {
+            c.hide()
+            return
+        }
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() != INSTAGRAM) {
+            c.hide()
+            return
+        }
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+
+        val labelRect = findSuggestedHeader(root, screenH) ?: run { c.hide(); return }
+        val top = (labelRect.top - (6 * dm.density).toInt()).coerceAtLeast(0)
+        // A suggested post is roughly a square media plus header and caption/actions.
+        val coverHeight = screenW + (320 * dm.density).toInt()
+        val bottom = (top + coverHeight).coerceAtMost(screenH)
+        c.show(Rect(0, top, screenW, bottom), 0xFF000000.toInt())
+    }
+
+    private fun findSuggestedHeader(root: AccessibilityNodeInfo, screenH: Int): Rect? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        val rect = Rect()
+        while (stack.isNotEmpty() && seen < 600) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isVisibleToUser) {
+                val text = (node.text?.toString() ?: node.contentDescription?.toString())?.lowercase()
+                if (text != null && text.length < 40 && suggestedLabels.any { text == it || text.startsWith(it) }) {
+                    node.getBoundsInScreen(rect)
+                    // Only act on a header in the scrollable feed area (not the very bottom bar).
+                    if (rect.top in 1 until (screenH * 0.8f).toInt()) return Rect(rect)
+                }
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return null
+    }
 
     /** Bounds of a bottom-bar tab: by view id first, then by its label/description. */
     private fun findTabBounds(root: AccessibilityNodeInfo, label: String, ids: List<String>): Rect? {

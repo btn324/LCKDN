@@ -171,6 +171,7 @@ class SetupActivity : AppCompatActivity() {
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
         addToggle("YouTube Shorts", "Hides the Shorts tab and backs out of any Short. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
         addToggle("Reels (Instagram + Facebook)", "Hides the Reels tab and backs out of any Reel in Instagram and Facebook. Feeds, Stories and DMs keep working.", Prefs.BLOCK_REELS)
+        addToggle("Hide Instagram suggested posts", "Covers “Suggested for you” posts in the home feed so you mostly see people you follow. Tip: Instagram’s own “Following” feed does this perfectly.", Prefs.HIDE_IG_SUGGESTED)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
             "Block Reddit, X & Telegram",
