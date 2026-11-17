@@ -18,6 +18,7 @@ object Prefs {
     const val BLOCK_TIKTOK = "block_tiktok"
     const val STRICT_BROWSER = "strict_browser"
     const val BLOCK_SOCIAL = "block_social"
+    const val ALLOW_SHORTS_SCHOOL = "allow_shorts_school"
     const val QUOTES = "quotes"
 
     private fun sp(c: Context): SharedPreferences =

@@ -171,6 +171,7 @@ class SetupActivity : AppCompatActivity() {
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
         addToggle("YouTube Shorts", "Hides the Shorts tab and backs out of any Short. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
         addToggle("Reels (Instagram + Facebook)", "Hides the Reels tab and backs out of any Reel in Instagram and Facebook. Feeds, Stories and DMs keep working.", Prefs.BLOCK_REELS)
+        addToggle("Allow Shorts & Reels during school hours", "Lets Shorts and Reels through on weekdays (Mon–Fri) from 07:00 to 14:10. Everything else, including adult content, stays blocked at all times.", Prefs.ALLOW_SHORTS_SCHOOL)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
             "Block Reddit, X & Telegram",
@@ -200,8 +201,9 @@ class SetupActivity : AppCompatActivity() {
         } else {
             toggle.isChecked = Prefs.flag(this, key)
             toggle.setOnCheckedChangeListener { button, checked ->
-                // Quotes aren't protection, so they can always be switched.
-                if (!checked && Prefs.isLocked(this) && key != Prefs.QUOTES) {
+                // Quotes aren't protection; the school-hours exception only ever tightens when
+                // turned off — so both can always be switched, even while locked.
+                if (!checked && Prefs.isLocked(this) && key != Prefs.QUOTES && key != Prefs.ALLOW_SHORTS_SCHOOL) {
                     button.isChecked = true
                     Toast.makeText(this, R.string.loosen_blocked, Toast.LENGTH_SHORT).show()
                     return@setOnCheckedChangeListener

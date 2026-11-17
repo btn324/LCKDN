@@ -239,7 +239,7 @@ class GuardAccessibilityService : AccessibilityService() {
         try {
             when {
                 rootPkg == YOUTUBE -> {
-                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) &&
+                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) && !shortsReelsAllowedNow() &&
                         (hasVisibleId(root, YT_SHORTS_IDS) || isImmersiveShortVideo(root, "short"))
                     ) {
                         act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
@@ -248,7 +248,7 @@ class GuardAccessibilityService : AccessibilityService() {
                     }
                 }
 
-                rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) ->
+                rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow() ->
                     // clips_* ids only. No "reel" content fallback here, since Instagram Stories
                     // are also internally "reels" and must stay usable.
                     if (hasVisibleId(root, IG_REELS_IDS)) {
@@ -256,7 +256,7 @@ class GuardAccessibilityService : AccessibilityService() {
                     }
 
                 rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) -> {
-                    if (isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    if (!shortsReelsAllowedNow() && isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
                     else checkFeedApp(root)
                 }
 
@@ -281,9 +281,9 @@ class GuardAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val front = root.packageName?.toString() ?: return
         val (label, ids, dark, enabled) = when {
-            front == YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS))
-            front == INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
-            front in FACEBOOK -> TabSpec("Reels", emptyList(), 0xFF18191A.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS))
+            front == YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS) && !shortsReelsAllowedNow())
+            front == INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow())
+            front in FACEBOOK -> TabSpec("Reels", emptyList(), 0xFF18191A.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow())
             else -> return
         }
         if (!enabled) {
@@ -387,6 +387,18 @@ class GuardAccessibilityService : AccessibilityService() {
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
         return tallVideo && words >= 1
+    }
+
+    /**
+     * During school hours (Mon–Fri 07:00–14:10) Shorts and Reels are allowed, if the user turned
+     * that exception on. Everything else (porn, etc.) stays blocked at all times.
+     */
+    private fun shortsReelsAllowedNow(): Boolean {
+        if (!Prefs.flag(this, Prefs.ALLOW_SHORTS_SCHOOL)) return false
+        val day = java.time.LocalDate.now().dayOfWeek
+        if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) return false
+        val now = java.time.LocalTime.now()
+        return !now.isBefore(java.time.LocalTime.of(7, 0)) && !now.isAfter(java.time.LocalTime.of(14, 10))
     }
 
     private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
