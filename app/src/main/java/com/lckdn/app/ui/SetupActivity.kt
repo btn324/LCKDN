@@ -171,7 +171,7 @@ class SetupActivity : AppCompatActivity() {
         addToggle("Ads & pop-ups", "Blocks ad, pop-up and redirect networks across apps and browsers.", Prefs.BLOCK_ADS)
         addToggle("YouTube Shorts", "Hides the Shorts tab and backs out of any Short. The rest of YouTube keeps working.", Prefs.BLOCK_SHORTS)
         addToggle("Reels (Instagram + Facebook)", "Hides the Reels tab and backs out of any Reel in Instagram and Facebook. Feeds, Stories and DMs keep working.", Prefs.BLOCK_REELS)
-        addToggle("Allow Shorts & Reels during school hours", "Lets Shorts and Reels through on weekdays (Mon–Fri) from 07:00 to 14:10. Everything else, including adult content, stays blocked at all times.", Prefs.ALLOW_SHORTS_SCHOOL)
+        addToggle("Allow Shorts & Reels during school hours", "Lets Shorts and Reels through on real school days (Mon–Fri, 07:00–14:10). On weekends, public holidays and school breaks (autumn, winter, spring, summer) they stay blocked. Everything else, including adult content, stays blocked at all times.", Prefs.ALLOW_SHORTS_SCHOOL)
         addToggle("TikTok", "Closes TikTok while you're locked in.", Prefs.BLOCK_TIKTOK)
         addToggle(
             "Block Reddit, X & Telegram",

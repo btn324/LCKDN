@@ -390,13 +390,14 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * During school hours (Mon–Fri 07:00–14:10) Shorts and Reels are allowed, if the user turned
-     * that exception on. Everything else (porn, etc.) stays blocked at all times.
+     * On a real school day (Mon–Fri, not a public holiday or school break) between 07:00 and 14:10,
+     * Shorts and Reels are allowed, if the user turned that exception on. On weekends, holidays,
+     * breaks (autumn / winter / spring / summer) and outside those hours they stay blocked — and
+     * everything else (porn, etc.) stays blocked at all times.
      */
     private fun shortsReelsAllowedNow(): Boolean {
         if (!Prefs.flag(this, Prefs.ALLOW_SHORTS_SCHOOL)) return false
-        val day = java.time.LocalDate.now().dayOfWeek
-        if (day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY) return false
+        if (!com.lckdn.app.Holidays.isSchoolDay(java.time.LocalDate.now())) return false
         val now = java.time.LocalTime.now()
         return !now.isBefore(java.time.LocalTime.of(7, 0)) && !now.isAfter(java.time.LocalTime.of(14, 10))
     }
