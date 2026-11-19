@@ -13,8 +13,8 @@ android {
         applicationId = "com.lckdn.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "1.5.2"
+        versionCode = 23
+        versionName = "1.6.0"
     }
 
     signingConfigs {

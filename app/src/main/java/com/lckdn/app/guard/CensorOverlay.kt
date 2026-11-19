@@ -25,7 +25,7 @@ class CensorOverlay(private val service: AccessibilityService) {
     private var view: View? = null
 
     @SuppressLint("ClickableViewAccessibility")
-    fun flash(durationMs: Long = 900) {
+    fun flash(durationMs: Long = 1500) {
         show()
         handler.removeCallbacksAndMessages(null)
         handler.postDelayed({ hide() }, durationMs)

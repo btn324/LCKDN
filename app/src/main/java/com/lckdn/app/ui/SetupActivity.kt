@@ -180,8 +180,8 @@ class SetupActivity : AppCompatActivity() {
         )
         addToggle(
             "Strict browser filter",
-            "Also blocks explicit words in addresses and searches, not just known sites.",
-            Prefs.STRICT_BROWSER
+            "Always on. Blocks explicit words in addresses and searches, reads every page (including Reddit NSFW posts, image results and 18+ gates) and closes browsers LCKDN can't filter.",
+            key = null
         )
         addToggle(
             "Daily motivation",

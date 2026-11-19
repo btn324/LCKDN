@@ -2,6 +2,8 @@ package com.lckdn.app.guard
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
@@ -56,14 +58,22 @@ class GuardAccessibilityService : AccessibilityService() {
             "com.twitter.android", "com.twitter.android.lite",     // X / Twitter
             "org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram", // Telegram
             "com.tumblr", "com.snapchat.android", "com.pinterest", "com.discord",
-            "com.bsky.app", "com.zhiliaoapp.musically.go", "com.vkontakte.android", "com.imgur.mobile"
+            "com.bsky.app", "com.zhiliaoapp.musically.go", "com.vkontakte.android", "com.imgur.mobile",
+            "com.ninegag.android.app", "br.com.ifunny", "mobi.ifunny", "kik.android", "com.quora.android",
+            "com.lemon.lvoverseas", "com.bereal.ft", "com.tellonym.android", "com.yubo.app",
+            "com.azarlive.android", "com.wildec.meet24", "com.tinder", "com.bumble.app",
+            "org.joinmastodon.android", "com.mastodon.android", "com.deviantart.android.damobile",
+            "com.patreon.android", "com.fansly.app", "com.vsco.cam", "com.weheartit"
         )
 
         /** Age / content gates that precede explicit media. Matched case-insensitively. */
         val FEED_GATES = listOf(
             "sexually explicit", "contains nudity", "mature content", "sensitive content",
             "adult content", "nsfw content", "18+ content", "over 18 to view", "contains sensitive",
-            "r/nsfw", "/r/nsfw", "marked as 18+", "view sensitive"
+            "r/nsfw", "/r/nsfw", "marked as 18+", "view sensitive", "nsfw",
+            "you must be 18", "are you over 18", "i'm over 18", "over 18 only", "age-restricted",
+            "age restricted", "explicit content", "graphic content", "this community is for adults",
+            "felnőtt tartalom", "kényes tartalom", "18 éven felüli", "érzékeny tartalom"
         )
 
         val YT_SHORTS_IDS = listOf(
@@ -150,6 +160,11 @@ class GuardAccessibilityService : AccessibilityService() {
             put("com.mi.globalbrowser", listOf("url"))
             put("com.UCMobile.intl", listOf("titlebar_url"))
             put("com.google.android.googlequicksearchbox", listOf("search_box", "googleapp_search_box"))
+            // Read by page content only (their address-bar ids aren't known).
+            put("com.android.browser", listOf("url", "url_bar", "title"))
+            put("com.google.android.apps.searchlite", listOf("search_box"))
+            put("com.ecosia.android", listOf("url_bar"))
+            put("org.mozilla.klar", listOf("display_url", "mozac_browser_toolbar_url_view"))
         }
     }
 
@@ -159,10 +174,15 @@ class GuardAccessibilityService : AccessibilityService() {
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
+    /** Installed web browsers that LCKDN can't read. They are closed while locked in. */
+    @Volatile private var otherBrowsers: Set<String> = emptySet()
+    private var lastBrowserScan = 0L
+
     private val watchdog = object : Runnable {
         override fun run() {
             Protection.ensureRunning(this@GuardAccessibilityService)
             Notifications.refreshStatusIfDue(this@GuardAccessibilityService)
+            if (SystemClock.uptimeMillis() - lastBrowserScan > 60_000) scanBrowsers()
             handler.postDelayed(this, 10_000)
         }
     }
@@ -171,6 +191,7 @@ class GuardAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         cover = TabCover(this)
         censor = CensorOverlay(this)
+        scanBrowsers()
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
     }
@@ -209,8 +230,10 @@ class GuardAccessibilityService : AccessibilityService() {
         val isTamper = pkg in SETTINGS || pkg in BYPASS_APPS || pkg == VPN_DIALOGS
 
         val now = SystemClock.uptimeMillis()
-        if (!isTamper && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (now - (lastCheck[pkg] ?: 0L) < 250) return
+        val frequent = event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+        if (!isTamper && frequent) {
+            if (now - (lastCheck[pkg] ?: 0L) < 150) return
             lastCheck[pkg] = now
         }
 
@@ -223,10 +246,13 @@ class GuardAccessibilityService : AccessibilityService() {
                 cover?.hide()
             }
         }
-        if (!isTamper && now - lastAction < 900) return
+        if (!isTamper && now - lastAction < 600) return
 
         // Whole-app blocks don't need the view tree.
         if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        if (pkg in otherBrowsers && pkg !in BROWSERS) {
+            return act(GLOBAL_ACTION_HOME, getString(R.string.browser_unsupported))
+        }
         if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
             return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
         }
@@ -253,12 +279,18 @@ class GuardAccessibilityService : AccessibilityService() {
                     // are also internally "reels" and must stay usable.
                     if (hasVisibleId(root, IG_REELS_IDS)) {
                         act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    } else {
+                        checkFeedApp(root)
                     }
+
+                rootPkg == INSTAGRAM -> checkFeedApp(root)
 
                 rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) -> {
                     if (!shortsReelsAllowedNow() && isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
                     else checkFeedApp(root)
                 }
+
+                rootPkg in FACEBOOK -> checkFeedApp(root)
 
                 rootPkg in FEED_APPS -> checkFeedApp(root)
 
@@ -327,7 +359,7 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
             pkg in FACEBOOK || pkg in FEED_APPS || pkg in SOCIAL_APPS || pkg in BYPASS_APPS ||
-            pkg in SETTINGS || pkg in BROWSERS
+            pkg in SETTINGS || pkg in BROWSERS || pkg in otherBrowsers
 
     /**
      * Reddit, X, Telegram and other feed apps: clear explicit searches, close explicit posts by
@@ -348,10 +380,9 @@ class GuardAccessibilityService : AccessibilityService() {
                 return
             }
         }
-        val text = collectText(root, limit = 500)
+        val text = collectText(root, limit = 1200)
         if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) }) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            showBlocked(getString(R.string.content_blocked))
+            blockPage(getString(R.string.content_blocked))
         }
     }
 
@@ -431,8 +462,7 @@ class GuardAccessibilityService : AccessibilityService() {
         if (hasVisibleId(root, YT_PLAYER_IDS)) {
             val title = firstTextOf(root, YT_TITLE_IDS)
             if (title != null && Blocklist.isExplicitText(title)) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                showBlocked(getString(R.string.video_blocked))
+                blockPage(getString(R.string.video_blocked))
             }
         }
     }
@@ -449,19 +479,18 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
-        val strict = Prefs.flag(this, Prefs.STRICT_BROWSER)
+        // Strict mode is always on while locked: words in addresses and searches count, not only
+        // known sites, and the rendered page itself is read.
         val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
+        var url: String? = null
         for (id in BROWSERS[pkg].orEmpty()) {
             val nodes = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") ?: continue
             for (node in nodes) {
                 val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
-                if (blockSocial && Blocklist.isSocialHost(text)) {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    showBlocked(getString(R.string.page_blocked))
-                    return
-                }
-                val explicit = if (strict) Blocklist.isExplicitText(text) else Blocklist.isExplicitHost(text)
-                if (!explicit) continue
+                if (url == null) url = text
+                if (blockSocial && Blocklist.isSocialHost(text)) return blockPage(getString(R.string.page_blocked))
+                if (Blocklist.isUnsafeMediaSearch(text)) return blockPage(getString(R.string.page_blocked))
+                if (!Blocklist.isExplicitText(text)) continue
                 if (node.isFocused && node.isEditable) {
                     val args = Bundle().apply {
                         putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
@@ -470,17 +499,42 @@ class GuardAccessibilityService : AccessibilityService() {
                     toast(getString(R.string.search_blocked))
                     lastAction = SystemClock.uptimeMillis()
                 } else {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    showBlocked(getString(R.string.page_blocked))
+                    blockPage(getString(R.string.page_blocked))
                 }
                 return
             }
         }
-        // Strict mode: also scan the rendered page (title + visible labels), so explicit pages
-        // and image results are closed even on sites the domain list doesn't know.
-        if (strict && Blocklist.isExplicitContent(collectText(root, limit = 400))) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            showBlocked(getString(R.string.page_blocked))
+        // Read the rendered page (title, visible text, image alt text), so explicit pages, image
+        // results and NSFW posts are closed even on sites the domain list doesn't know.
+        val page = collectText(root, limit = 1200)
+        val onReddit = (url != null && Blocklist.isRedditHost(url)) || page.contains("reddit")
+        if (onReddit && Blocklist.isRedditNsfw((url ?: "") + "\n" + page)) {
+            return blockPage(getString(R.string.page_blocked))
+        }
+        if (Blocklist.isExplicitContent(page) || FEED_GATES.any { page.contains(it) }) {
+            blockPage(getString(R.string.page_blocked))
+        }
+    }
+
+    /**
+     * Every installed app that opens any web address is a browser. The ones LCKDN has no
+     * address-bar support for are closed while locked in, so there is no unfiltered browser left.
+     */
+    private fun scanBrowsers() {
+        lastBrowserScan = SystemClock.uptimeMillis()
+        try {
+            val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://lckdn-probe.example/"))
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+            val found = packageManager.queryIntentActivities(probe, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName }
+                .filter {
+                    it != packageName && it !in BROWSERS && it !in SETTINGS && it != "android" &&
+                        it != YOUTUBE && it != INSTAGRAM && it !in FACEBOOK && it !in FEED_APPS &&
+                        !it.contains("intentresolver") && !it.contains("resolver")
+                }
+                .toSet()
+            otherBrowsers = found
+        } catch (_: Exception) {
         }
     }
 
@@ -521,6 +575,14 @@ class GuardAccessibilityService : AccessibilityService() {
         lastAction = SystemClock.uptimeMillis()
         performGlobalAction(action)
         toast(message)
+    }
+
+    /** Black the screen out first (so nothing can be seen), then leave the page. */
+    private fun blockPage(reason: String) {
+        lastAction = SystemClock.uptimeMillis()
+        censor?.flash()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        showBlocked(reason)
     }
 
     private fun showBlocked(reason: String) {

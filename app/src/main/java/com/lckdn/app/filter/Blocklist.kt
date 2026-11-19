@@ -49,6 +49,25 @@ object Blocklist {
         "leakedzone.com", "faponic.com", "hotleak.vip", "porn3dx.com", "sex3dcartoon.com",
         "yespornplease.net", "pornhub.org", "spankbang.party", "javtiful.com", "highporn.net",
         "watchporn.to", "freeones.com", "babepedia.org", "thenip.net", "nsfw.xxx", "nsfwalbum.com",
+        // Reddit-NSFW mirrors / image rippers, image boards and leak sites
+        "redgifs.com", "gifdeliverynetwork.com", "gfycatporn.com", "scrolller.com", "nsfwreddit.com",
+        "redditporn.com", "reddxxx.com", "redditlist.com", "nsfwbase.com", "nsfwcrave.com",
+        "rule34.us", "rule34.world", "xbooru.com", "realbooru.com", "hypnohub.net", "yande.re",
+        "konachan.com", "konachan.net", "e-hentai.org", "hentai-foundry.com", "pixiv.moe",
+        "fapdungeon.com", "fapsafari.com", "fapnado.com", "fapopedia.net", "nudogram.com",
+        "onlyfans-leaks.com", "leakimedia.com", "socialmediagirls.com", "forums.socialmediagirls.com",
+        "phun.org", "planetsuzy.org", "vipergirls.to", "imx.to", "pixhost.to", "imagetwist.com",
+        "imagebam.com", "turboimagehost.com", "porn-images-xxx.com", "sexygirlspics.com",
+        "pornpics.de", "elitebabes.com", "hegre.com", "femjoy.com", "x-art.com", "nubiles.net",
+        "joymii.com", "zishy.com", "nakedgirls.xxx", "nudepics.co", "girlsofdesire.org",
+        "sexyandfunny.com", "boobieblog.com", "drunkenstepfather.com", "fapcat.com", "xasiat.com",
+        "tiktits.com", "tikporn.tv", "nsfwtiktok.com", "xxxtik.com", "fikfap.com", "jizzbunker.com",
+        "porntn.com", "ixxx.com", "pornoxo.com", "lobstertube.com", "pornburst.xxx", "xozilla.com",
+        "letsjerk.tv", "pornky.com", "4kporn.xxx", "povaddict.com", "sexu.com", "redwap.me",
+        "chikiporn.com", "pornerbros.com", "alohatube.com", "porndig.com", "pornwhite.com",
+        "omegle.fm", "chatroulette.com", "camgirlvideos.org", "mrdeepfakes.com", "deepfakeporn.net",
+        "clothoff.io", "undress.app", "nudify.online", "deepnude.cc", "pornpen.ai", "candy.ai",
+        "crushon.ai", "spicychat.ai", "janitorai.com",
         // Adult ad networks (pop-unders and redirect ads)
         "exoclick.com", "exosrv.com", "exdynsrv.com", "juicyads.com", "trafficjunky.com",
         "trafficjunky.net", "trafficstars.com", "tsyndicate.com", "plugrush.com",
@@ -75,12 +94,23 @@ object Blocklist {
         "sideboob", "underboob", "braless", "topless", "nipslip", "nudegirl", "nakedgirl",
         "camwhore", "recurbate", "nudostar", "dirtyship", "leaked nudes", "onlyfans leak",
         "sexvideo", "sexphoto", "xxxvideo", "pornvideo", "pornpic", "sexpic", "nudepic",
+        "nude", "naked", "nudity", "18+", "over18", "over 18", "nsfl", "lingerie", "bikini",
+        "thong", "see through", "seethrough", "slutty", "slut", "whore", "horny", "sexy", "hot girl",
+        "hotgirl", "e-girl", "egirl", "feet pics", "feetpics", "pawg", "realgirls", "collegesluts",
+        "holdthemoan", "cumsluts", "boobies", "petite gonewild", "asstastic", "girlsfinishingthejob",
+        "legalteens", "gwcouples", "nsfw_gif", "porninfifteenseconds", "celebnsfw", "onlyfansgirls",
+        "sex", "fuck", "cock", "dick pic", "dickpic", "penis", "vagina", "clit", "anal", "nsfw gif",
+        "strip", "stripper", "striptease", "camshow", "lap dance", "hookup", "sugar daddy", "deepfake",
+        "undressed", "barely legal", "jailbait", "teen sex", "stepsis", "stepmom", "joi ",
         // Hungarian (accent-stripped forms included)
         "szexvideo", "szexfilm", "szexkep", "meztelen", "pucer", "cici", "cicis", "cicik", "csocs",
         "csocsos", "mellbimbo", "punci", "pina", "fasz", "dugas", "dugni", "kuras", "kurva", "ribanc",
         "maszturbal", "merevedes", "orgazmus", "szopas", "fasza", "geci", "didko", "segg", "pornofilm",
         "pornokep", "pornovideo", "cickok", "szexi no", "dekolt", "szexi csaj", "bugyis", "popsi",
-        "booty", "thicc", "twerk", "bigass", "nagy fenek", "harisnyas",
+        "booty", "thicc", "twerk", "bigass", "nagy fenek", "harisnyas", "szex",
+        "meztelenul", "csupasz", "fehernemu", "tanga", "bugyi", "melltarto", "kebel", "keblek",
+        "basz", "baszas", "kurvak", "lotyo", "prosti", "sztriptiz", "erotikus", "szexualis",
+        "nudi", "akt foto", "aktfoto", "18 even feluli", "felnott tartalom", "kenyes tartalom",
         // German
         "nackt", "titten", "ficken", "muschi", "schwanz", "geile", "nackte", "nutte",
         // French
@@ -103,7 +133,7 @@ object Blocklist {
         "hubad", "pekpek",
         // common latinized Japanese/Korean
         "mujun", "yadong"
-    )
+    ).map { fold(it) }
 
     /**
      * Terms matched only as a whole word, because as a substring they collide with innocent words.
@@ -113,7 +143,7 @@ object Blocklist {
     private val boundaryKeywords = listOf(
         "mellek", "mell", "mellei", "mellem", "melleit", "melleid", "cicije", "breasts", "boob",
         "ass", "butt", "fenek", "popo"
-    )
+    ).map { fold(it) }
 
     /** Longer words that innocently contain a blocked substring. */
     private val keywordExceptions = listOf(
@@ -125,8 +155,15 @@ object Blocklist {
         "cockpit", "cocktail", "peacock", "hancock", "shuttlecock", "dickens", "cummings",
         "title", "competition", "constitution", "institute", "latitude", "appetite", "nudge",
         // Hungarian everyday words that contain a blocked fragment
-        "faszen", "faszenet", "dugasz", "dugaszol", "dugaszt"
-    )
+        "faszen", "faszenet", "dugasz", "dugaszol", "dugaszt",
+        // English words containing sex / cock / anal / strip / nude / dick / slut / clit / basz / kefir
+        "sextet", "sexton", "susse", "cockroach", "cockatoo", "cockney", "hitchcock", "woodcock",
+        "kanal", "analiz", "analys", "cocker", "babcock", "thorny", "petits", "strip mall", "stripe",
+        "striped", "stripes", "airstrip", "comic strip", "filmstrip", "outstrip", "gaza strip",
+        "nudel", "denude", "dickinson", "benedict", "dickens", "predict", "verdict", "addict",
+        "edict", "contradict", "dictat", "diction", "dictionar", "jurisdict", "indict", "valedict",
+        "slutsk", "clitheroe", "nudelsupp"
+    ).map { fold(it) }
 
     /** DNS-over-HTTPS / DoT endpoints and canaries that would let browsers bypass the filter. */
     private val bypassDomains = hashSetOf(
@@ -141,7 +178,11 @@ object Blocklist {
         // Proxy / unblocker sites
         "croxyproxy.com", "croxyproxy.rocks", "hide.me", "hidester.com", "proxysite.com",
         "kproxy.com", "hidemyass.com", "4everproxy.com", "blockaway.net", "proxyium.com",
-        "proxyfree.com", "genmirror.com", "unblockit.cam", "whateverorigin.org", "12ft.io"
+        "proxyfree.com", "genmirror.com", "unblockit.cam", "whateverorigin.org", "12ft.io",
+        // Page caches / translators that re-serve a blocked page under another domain
+        "translate.goog", "archive.ph", "archive.is", "archive.today", "archive.li", "archive.vn",
+        "archive.md", "web.archive.org", "ghostarchive.org", "cachedview.nl", "removeddit.com",
+        "reveddit.com", "unddit.com", "camas.unddit.com", "pullpush.io", "api.pullpush.io"
     )
 
     private val adDomains = hashSetOf(
@@ -192,6 +233,46 @@ object Blocklist {
         "telegram.org", "telegram.me", "t.me", "telegram.dog", "telega.one"
     )
 
+    private val redditHosts = setOf(
+        "reddit.com", "redd.it", "redditmedia.com", "reddituploads.com", "redditstatic.com"
+    )
+
+    fun isRedditHost(raw: String): Boolean {
+        val host = hostOf(fold(raw)) ?: return false
+        return matchesSuffix(host, redditHosts)
+    }
+
+    /**
+     * Reddit's own NSFW markers (post badge, the 18+ community gate, over18 links and the
+     * "show NSFW results" search toggle). Any of them on a Reddit page means the page is closed.
+     */
+    private val redditNsfwMarkers = listOf(
+        "nsfw", "over18", "over_18", "include_over_18", "18+", "mature content", "mature community",
+        "you must be 18", "are you over 18", "adult content", "this community is for adults",
+        "i'm over 18", "im over 18", "yes, i'm over 18", "continue to nsfw", "view nsfw",
+        "show nsfw", "explicit", "spoiler nsfw"
+    ).map { fold(it) }
+
+    fun isRedditNsfw(raw: String): Boolean {
+        val f = fold(decode(raw))
+        return redditNsfwMarkers.any { f.contains(it) }
+    }
+
+    /** Image / video search pages that SafeSearch DNS cannot lock (Yandex, Baidu, Sogou...). */
+    fun isUnsafeMediaSearch(raw: String): Boolean {
+        val f = fold(decode(raw))
+        val host = hostOf(f) ?: return false
+        val path = f.substringAfter(host, "")
+        val yandex = host.startsWith("yandex.") || host.contains(".yandex.") || host.startsWith("ya.ru")
+        if (yandex && (path.startsWith("/images") || path.startsWith("/video"))) return true
+        if (host.startsWith("image.baidu.") || host.startsWith("pic.sogou.") || host.startsWith("image.so.")) return true
+        // Google / Bing / DDG with SafeSearch explicitly switched off in the URL.
+        if (f.contains("safe=off") || f.contains("safesearch=off") || f.contains("kp=-2") ||
+            f.contains("adlt=off")
+        ) return true
+        return false
+    }
+
     fun isSocialHost(raw: String): Boolean {
         val host = hostOf(fold(raw)) ?: return false
         return matchesSuffix(host, socialHosts)
@@ -209,8 +290,16 @@ object Blocklist {
         "cumshot", "creampie", "gangbang", "bukkake", "masturbat", "deepnude", "camwhore",
         "sexvideo", "xxxvideo", "pornvideo", "pornpic", "nudepic", "bigtits", "bigboobs", "hugetits",
         "szexvideo", "szexfilm", "szexkep", "pornofilm", "pornokep", "pornovideo", "meztelen",
-        "mellbimbo", "maszturbal", "bokep", "ngentot", "chudai", "buceta"
-    )
+        "mellbimbo", "maszturbal", "bokep", "ngentot", "chudai", "buceta",
+        "nsfw", "gonewild", "nudes", "nudity", "rule34", "redgifs",
+        "over18", "sexually explicit", "adult content", "mature content", "sensitive content",
+        "nsfl", "pawg", "realgirls", "collegesluts", "holdthemoan", "cumsluts", "boobies",
+        "pussy", "boobs", "titties", "dildo", "orgasm", "erotic", "erotica", "fetish",
+        "bdsm", "slut", "whore", "jerkoff", "lewd", "ecchi", "ahegao", "futanari",
+        "deepfake", "undress", "nudify", "topless", "nipples", "nipslip", "upskirt", "cameltoe",
+        "onlyfans leak", "leaked nudes", "felnott tartalom", "kenyes tartalom", "pucer", "punci",
+        "szopas", "dugas", "baszas", "csocs"
+    ).map { fold(it) }
 
     /**
      * A larger blob of on-screen text (page title + visible labels). Used by the screen guard to

@@ -38,6 +38,7 @@
     <string name="reels_blocked">Reels are blocked. Stay locked in.</string>
     <string name="app_blocked">This app is blocked while you\'re locked in.</string>
     <string name="search_blocked">That search is blocked.</string>
+    <string name="browser_unsupported">This browser can\'t be filtered. Use Chrome, Firefox, Samsung Internet, Edge, Brave, Opera or DuckDuckGo while locked in.</string>
     <string name="page_blocked">This page is blocked by LCKDN.</string>
     <string name="loosen_blocked">You can\'t loosen protection while locked in.</string>
 </resources>
