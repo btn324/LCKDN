@@ -114,7 +114,19 @@ class GuardAccessibilityService : AccessibilityService() {
         /** Apps that route around the DNS filter. */
         val BYPASS_APPS = setOf(
             "org.torproject.torbrowser", "org.torproject.torbrowser_alpha",
-            "org.torproject.android", "info.guardianproject.orfox"
+            "org.torproject.android", "info.guardianproject.orfox",
+            // Cloud-rendered / built-in-proxy browsers: pages load on a remote server, so the
+            // phone's DNS filter never sees them.
+            "com.cloudmosa.puffin", "com.cloudmosa.puffinFree", "com.cloudmosa.puffinIncognito",
+            "com.cloudmosa.puffinTV", "com.aloha.browser", "com.aloha.browser.lite"
+        )
+
+        /** System surfaces that never show web pages; skipped by the in-app WebView check. */
+        val NON_WEB = setOf(
+            "com.android.systemui", "com.google.android.inputmethod.latin", "com.android.vending",
+            "com.google.android.gms", "com.android.phone", "com.google.android.dialer",
+            "com.android.server.telecom", "com.miui.home", "com.mi.android.globallauncher",
+            "com.google.android.apps.nexuslauncher", "com.sec.android.app.launcher"
         )
 
         val SETTINGS = setOf(
@@ -223,7 +235,12 @@ class GuardAccessibilityService : AccessibilityService() {
             if (front != null && front != covered) cover?.hide()
         }
 
-        if (pkg == packageName || !isInteresting(pkg)) return
+        if (pkg == packageName) return
+        if (!isInteresting(pkg)) {
+            // Any other app: if it is showing a web page (an in-app browser / WebView), read it.
+            checkInAppWebView(pkg)
+            return
+        }
 
         // Uninstall / force-stop / deactivate screens must be reacted to on EVERY event with no
         // cooldown, otherwise they can be won by spamming the screen open faster than the guard.
@@ -250,9 +267,6 @@ class GuardAccessibilityService : AccessibilityService() {
 
         // Whole-app blocks don't need the view tree.
         if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
-        if (pkg in otherBrowsers && pkg !in BROWSERS) {
-            return act(GLOBAL_ACTION_HOME, getString(R.string.browser_unsupported))
-        }
         if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
             return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
         }
@@ -294,7 +308,7 @@ class GuardAccessibilityService : AccessibilityService() {
 
                 rootPkg in FEED_APPS -> checkFeedApp(root)
 
-                rootPkg in BROWSERS -> checkBrowser(root, rootPkg)
+                isBrowser(rootPkg) -> checkBrowser(root, rootPkg)
 
                 rootPkg == VPN_DIALOGS -> {
                     if (!collectText(root).contains("lckdn")) act(GLOBAL_ACTION_BACK, getString(R.string.vpn_blocked))
@@ -359,7 +373,11 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
             pkg in FACEBOOK || pkg in FEED_APPS || pkg in SOCIAL_APPS || pkg in BYPASS_APPS ||
-            pkg in SETTINGS || pkg in BROWSERS || pkg in otherBrowsers
+            pkg in SETTINGS || isBrowser(pkg)
+
+    /** Known browsers, every app that opens web links like a browser, and anything named "browser". */
+    private fun isBrowser(pkg: String) =
+        pkg in BROWSERS || pkg in otherBrowsers || pkg.contains("browser", ignoreCase = true)
 
     /**
      * Reddit, X, Telegram and other feed apps: clear explicit searches, close explicit posts by
@@ -483,26 +501,23 @@ class GuardAccessibilityService : AccessibilityService() {
         // known sites, and the rendered page itself is read.
         val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
         var url: String? = null
-        for (id in BROWSERS[pkg].orEmpty()) {
-            val nodes = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") ?: continue
-            for (node in nodes) {
-                val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
-                if (url == null) url = text
-                if (blockSocial && Blocklist.isSocialHost(text)) return blockPage(getString(R.string.page_blocked))
-                if (Blocklist.isUnsafeMediaSearch(text)) return blockPage(getString(R.string.page_blocked))
-                if (!Blocklist.isExplicitText(text)) continue
-                if (node.isFocused && node.isEditable) {
-                    val args = Bundle().apply {
-                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
-                    }
-                    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                    toast(getString(R.string.search_blocked))
-                    lastAction = SystemClock.uptimeMillis()
-                } else {
-                    blockPage(getString(R.string.page_blocked))
+        for (node in addressBarNodes(root, pkg)) {
+            val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+            if (url == null) url = text
+            if (blockSocial && Blocklist.isSocialHost(text)) return blockPage(getString(R.string.page_blocked))
+            if (Blocklist.isUnsafeMediaSearch(text)) return blockPage(getString(R.string.page_blocked))
+            if (!Blocklist.isExplicitText(text)) continue
+            if (node.isFocused && node.isEditable) {
+                val args = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
                 }
-                return
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                toast(getString(R.string.search_blocked))
+                lastAction = SystemClock.uptimeMillis()
+            } else {
+                blockPage(getString(R.string.page_blocked))
             }
+            return
         }
         // Read the rendered page (title, visible text, image alt text), so explicit pages, image
         // results and NSFW posts are closed even on sites the domain list doesn't know.
@@ -517,8 +532,76 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Every installed app that opens any web address is a browser. The ones LCKDN has no
-     * address-bar support for are closed while locked in, so there is no unfiltered browser left.
+     * The address bar (and search box) of any browser: by its known view id first, then by
+     * looking for an editable field or a view whose id names a URL / address / omnibox, so
+     * browsers LCKDN has never seen are read too.
+     */
+    private fun addressBarNodes(root: AccessibilityNodeInfo, pkg: String): List<AccessibilityNodeInfo> {
+        val out = ArrayList<AccessibilityNodeInfo>()
+        for (id in BROWSERS[pkg].orEmpty()) {
+            root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.let { out.addAll(it) }
+        }
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < 300) {
+            val node = stack.removeLast()
+            seen++
+            val id = node.viewIdResourceName?.lowercase()
+            val looksLikeBar = id != null && ADDRESS_ID_HINTS.any { id.contains(it) }
+            if ((looksLikeBar || node.isEditable) && !node.text.isNullOrBlank()) out.add(node)
+            // Don't descend into the web page itself here; that is read separately.
+            if (node.className?.contains("WebView") == true) continue
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return out
+    }
+
+    private val ADDRESS_ID_HINTS = listOf(
+        "url", "address", "omnibox", "location", "search_box", "searchbox", "search_edit",
+        "search_src", "titlebar", "title_bar", "toolbar_text", "query"
+    )
+
+    /**
+     * In-app browsers (links opened inside Gmail, Messenger, Discord, Snapchat, news apps...)
+     * render in a WebView. If any app shows one, its page is read and closed when explicit.
+     */
+    private fun checkInAppWebView(pkg: String) {
+        if (pkg in NON_WEB || pkg.contains("launcher") || pkg.contains("inputmethod") ||
+            pkg.contains("keyboard")
+        ) return
+        val now = SystemClock.uptimeMillis()
+        if (now - (lastCheck[pkg] ?: 0L) < 300 || now - lastAction < 600) return
+        lastCheck[pkg] = now
+        try {
+            val root = rootInActiveWindow ?: return
+            if (root.packageName?.toString() != pkg) return
+            val web = findWebView(root) ?: return
+            val text = collectText(web, limit = 1000)
+            if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) } ||
+                (text.contains("reddit") && Blocklist.isRedditNsfw(text))
+            ) {
+                blockPage(getString(R.string.page_blocked))
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun findWebView(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < 400) {
+            val node = stack.removeLast()
+            seen++
+            if (node.className?.contains("WebView") == true && node.isVisibleToUser) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return null
+    }
+
+    /**
+     * Every installed app that opens any web address is a browser, and is filtered like one.
      */
     private fun scanBrowsers() {
         lastBrowserScan = SystemClock.uptimeMillis()
