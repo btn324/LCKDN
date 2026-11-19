@@ -155,6 +155,11 @@ class GuardAccessibilityService : AccessibilityService() {
             "alkalmazás eltávolítása", "eltávolítása"
         )
 
+        val FIREFOX = setOf(
+            "org.mozilla.firefox", "org.mozilla.firefox_beta", "org.mozilla.fenix",
+            "org.mozilla.focus", "org.mozilla.klar"
+        )
+
         val BROWSERS: Map<String, List<String>> = buildMap {
             listOf(
                 "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
@@ -250,7 +255,14 @@ class GuardAccessibilityService : AccessibilityService() {
         val frequent = event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
         if (!isTamper && frequent) {
-            if (now - (lastCheck[pkg] ?: 0L) < 150) return
+            // Browsers (Firefox above all) slow down and crash if their page tree is read too
+            // often, so they are checked less frequently than other apps.
+            val gap = when {
+                pkg in FIREFOX -> 1000L
+                isBrowser(pkg) -> 600L
+                else -> 150L
+            }
+            if (now - (lastCheck[pkg] ?: 0L) < gap) return
             lastCheck[pkg] = now
         }
 
@@ -521,7 +533,7 @@ class GuardAccessibilityService : AccessibilityService() {
         }
         // Read the rendered page (title, visible text, image alt text), so explicit pages, image
         // results and NSFW posts are closed even on sites the domain list doesn't know.
-        val page = collectText(root, limit = 1200)
+        val page = collectText(root, limit = if (pkg in FIREFOX) 400 else 700)
         val onReddit = (url != null && Blocklist.isRedditHost(url)) || page.contains("reddit")
         if (onReddit && Blocklist.isRedditNsfw((url ?: "") + "\n" + page)) {
             return blockPage(getString(R.string.page_blocked))
@@ -541,6 +553,8 @@ class GuardAccessibilityService : AccessibilityService() {
         for (id in BROWSERS[pkg].orEmpty()) {
             root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.let { out.addAll(it) }
         }
+        // Known address bar found: no need to walk the tree (keeps the browser responsive).
+        if (out.any { !it.text.isNullOrBlank() }) return out
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var seen = 0
