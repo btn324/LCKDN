@@ -213,6 +213,8 @@ class GuardAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var cover: TabCover? = null
     private var censor: CensorOverlay? = null
+    /** Covers only LCKDN's own row on autostart / battery lists, so other apps stay settable. */
+    private var rowCover: TabCover? = null
     private val lastCheck = HashMap<String, Long>()
     private var lastAction = 0L
 
@@ -233,6 +235,7 @@ class GuardAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         cover = TabCover(this)
         censor = CensorOverlay(this)
+        rowCover = TabCover(this)
         scanBrowsers()
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
@@ -242,11 +245,13 @@ class GuardAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(watchdog)
         cover?.hide()
         censor?.hide()
+        rowCover?.hide()
         super.onDestroy()
     }
 
     override fun onInterrupt() {
         cover?.hide()
+        rowCover?.hide()
         censor?.hide()
     }
 
@@ -263,6 +268,11 @@ class GuardAccessibilityService : AccessibilityService() {
         if (covered != null && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val front = rootInActiveWindow?.packageName?.toString()
             if (front != null && front != covered) cover?.hide()
+        }
+        val rowCovered = rowCover?.coveredPackage
+        if (rowCovered != null && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val front = rootInActiveWindow?.packageName?.toString()
+            if (front != null && front != rowCovered) rowCover?.hide()
         }
 
         if (pkg == packageName) return
@@ -663,6 +673,36 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun checkTamper(root: AccessibilityNodeInfo) {
         val text = collectText(root)
         val aboutUs = text.contains("lckdn")
+
+        // Autostart / background / battery pages. On a list of apps only LCKDN's own row is
+        // covered (so every other app can still be switched); LCKDN's own detail page is closed.
+        // Either way it can still be used to turn LCKDN's permission back ON.
+        if (aboutUs && BACKGROUND_PAGES.any { text.contains(it) }) {
+            val row = lckdnRow(root)
+            val switchOn = row?.switchOn
+            val batteryExempt = getSystemService(PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(packageName) == true
+            val turningOn = switchOn == false || (switchOn == null && !batteryExempt)
+            if (row != null && row.listRow) {
+                if (turningOn) {
+                    rowCover?.hide()
+                } else {
+                    rowCover?.show(root.packageName?.toString() ?: "settings", row.bounds, 0xFF000000.toInt())
+                }
+                return
+            }
+            rowCover?.hide()
+            if (!turningOn) {
+                lastAction = SystemClock.uptimeMillis()
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                toast(getString(R.string.tamper_blocked))
+                return
+            }
+        } else {
+            rowCover?.hide()
+        }
+
         if (aboutUs && DANGER.any { text.contains(it) }) {
             // Dismiss the dialog and leave to the home screen, immediately.
             lastAction = SystemClock.uptimeMillis()
@@ -671,39 +711,44 @@ class GuardAccessibilityService : AccessibilityService() {
             toast(getString(R.string.tamper_blocked))
             return
         }
-        // Autostart / background / battery pages: block them unless they are being used to turn
-        // LCKDN's permission back ON (its switch is off) or to exempt it from battery limits.
-        if (aboutUs && BACKGROUND_PAGES.any { text.contains(it) }) {
-            val switchOn = lckdnSwitchState(root)
-            val batteryExempt = getSystemService(PowerManager::class.java)
-                ?.isIgnoringBatteryOptimizations(packageName) == true
-            val turningOn = switchOn == false || (switchOn == null && !batteryExempt)
-            if (!turningOn) {
-                lastAction = SystemClock.uptimeMillis()
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                performGlobalAction(GLOBAL_ACTION_HOME)
-                toast(getString(R.string.tamper_blocked))
-                return
-            }
-        }
         // A custom Private DNS hostname would route lookups around the filter.
         if (text.contains("private dns provider hostname") || text.contains("private dns hostname")) {
             act(GLOBAL_ACTION_BACK, getString(R.string.tamper_blocked))
         }
     }
 
+    private data class RowInfo(val bounds: Rect, val switchOn: Boolean?, val listRow: Boolean)
+
     /**
-     * The on/off state of the switch (or checked option) in LCKDN's row on a settings list,
-     * or null if no such control is found next to the "LCKDN" label.
+     * LCKDN's row on a settings screen: its bounds, the state of the switch in it (null if
+     * none), and whether it is a row in a list of apps (as opposed to LCKDN's own page).
      */
-    private fun lckdnSwitchState(root: AccessibilityNodeInfo): Boolean? {
+    private fun lckdnRow(root: AccessibilityNodeInfo): RowInfo? {
+        val screenH = resources.displayMetrics.heightPixels
+        val maxRow = screenH / 4
+        val rect = Rect()
         for (label in root.findAccessibilityNodeInfosByText("LCKDN").orEmpty()) {
-            var row: AccessibilityNodeInfo? = label
+            if (!label.isVisibleToUser) continue
+            var state: Boolean? = null
+            var rowNode: AccessibilityNodeInfo? = null
+            var cur: AccessibilityNodeInfo = label
             for (level in 0 until 4) {
-                row = row?.parent ?: break
-                val control = findCheckable(row, 60)
-                if (control != null) return control.isChecked
+                val parent = cur.parent ?: break
+                parent.getBoundsInScreen(rect)
+                if (rect.height() >= maxRow) break  // reached the whole list: stop
+                cur = parent
+                if (rowNode == null && cur.isClickable) rowNode = cur
+                val control = findCheckable(cur, 60)
+                if (control != null) {
+                    state = control.isChecked
+                    rowNode = cur
+                    break
+                }
             }
+            val target = rowNode ?: label
+            val bounds = Rect()
+            target.getBoundsInScreen(bounds)
+            return RowInfo(bounds, state, rowNode != null && bounds.height() in 1 until maxRow)
         }
         return null
     }
