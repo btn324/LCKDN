@@ -41,6 +41,16 @@ object Prefs {
         sp(c).edit().putBoolean(key, value).commit()
     }
 
+    private const val SETTINGS_GRANT = "settings_grant_until"
+
+    /** LCKDN's setup screen is opening the "run in background" prompt: allow it for 30 s. */
+    fun grantSettings(c: Context) {
+        sp(c).edit().putLong(SETTINGS_GRANT, android.os.SystemClock.elapsedRealtime() + 30_000).commit()
+    }
+
+    fun settingsGrantActive(c: Context): Boolean =
+        android.os.SystemClock.elapsedRealtime() < sp(c).getLong(SETTINGS_GRANT, 0L)
+
     /** Elapsed-realtime timestamp at which the unlock cooldown started, or -1. */
     fun cooldownStart(c: Context): Long = sp(c).getLong(UNLOCK_START, -1L)
 

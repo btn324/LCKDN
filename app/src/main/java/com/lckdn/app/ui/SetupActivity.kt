@@ -106,6 +106,7 @@ class SetupActivity : AppCompatActivity() {
             required = false,
             done = pm?.isIgnoringBatteryOptimizations(packageName) == true
         ) {
+            Prefs.grantSettings(this)
             try {
                 startActivity(
                     Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))

@@ -8,7 +8,6 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -706,30 +705,29 @@ class GuardAccessibilityService : AccessibilityService() {
         val text = collectText(root)
         val aboutUs = text.contains("lckdn")
 
-        // Autostart / background / battery pages. On a list of apps only LCKDN's own row is
-        // covered (so every other app can still be switched); LCKDN's own detail page is closed.
-        // Either way it can still be used to turn LCKDN's permission back ON.
+        // Autostart / background / battery pages that show LCKDN.
+        //  - A list of many apps: only LCKDN's row is covered, so other apps stay settable. The
+        //    cover only comes off when LCKDN's switch is definitely OFF (to turn it back on).
+        //  - Anything else (LCKDN's own app-info / battery page, unknown layouts): closed.
+        //  - The one exception: the "let LCKDN run in background" prompt that LCKDN itself opens
+        //    from its setup screen (a dialog with no switches), for 30 seconds.
         if (aboutUs && BACKGROUND_PAGES.any { text.contains(it) }) {
+            val switches = countCheckables(root)
             val row = lckdnRow(root)
-            val switchOn = row?.switchOn
-            val batteryExempt = getSystemService(PowerManager::class.java)
-                ?.isIgnoringBatteryOptimizations(packageName) == true
-            val turningOn = switchOn == false || (switchOn == null && !batteryExempt)
-            if (row != null && row.listRow) {
-                if (turningOn) {
-                    rowCover?.hide()
-                } else {
-                    rowCover?.show(root.packageName?.toString() ?: "settings", row.bounds, 0xFF000000.toInt())
+            if (switches >= 3 && row != null && row.listRow) {
+                if (row.switchOn == false) rowCover?.hide()
+                else rowCover?.show(root.packageName?.toString() ?: "settings", row.bounds, 0xFF000000.toInt())
+                return
+            } else {
+                rowCover?.hide()
+                val ownPrompt = switches == 0 && Prefs.settingsGrantActive(this)
+                if (!ownPrompt) {
+                    lastAction = SystemClock.uptimeMillis()
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    toast(getString(R.string.tamper_blocked))
+                    return
                 }
-                return
-            }
-            rowCover?.hide()
-            if (!turningOn) {
-                lastAction = SystemClock.uptimeMillis()
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                performGlobalAction(GLOBAL_ACTION_HOME)
-                toast(getString(R.string.tamper_blocked))
-                return
             }
         } else {
             rowCover?.hide()
@@ -791,6 +789,21 @@ class GuardAccessibilityService : AccessibilityService() {
             return RowInfo(bounds, state, rowNode != null && bounds.height() in 1 until maxRow)
         }
         return null
+    }
+
+    /** Number of visible switches / checkboxes / radio buttons on screen (bounded). */
+    private fun countCheckables(root: AccessibilityNodeInfo): Int {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        var count = 0
+        while (stack.isNotEmpty() && seen < 800) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isCheckable && node.isVisibleToUser) count++
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return count
     }
 
     private fun findCheckable(start: AccessibilityNodeInfo, limit: Int): AccessibilityNodeInfo? {
