@@ -122,6 +122,34 @@ class GuardAccessibilityService : AccessibilityService() {
             "com.cloudmosa.puffinTV", "com.aloha.browser", "com.aloha.browser.lite"
         )
 
+        /**
+         * Apps that create or switch to another user / space / work profile. LCKDN's filter only
+         * runs in the main user, so everything there would be unfiltered. Closed on sight.
+         * com.miui.securitycore hosts Xiaomi Second space and Dual apps.
+         */
+        val SPACE_APPS = setOf(
+            "com.miui.securitycore", "com.miui.securityspace", "com.miui.dualspace",
+            "com.oasisfeng.island", "com.oasisfeng.island.fdroid", "com.oasisfeng.insular",
+            "net.typeblog.shelter", "com.lbe.parallel.intl", "com.parallel.space.lite",
+            "com.parallel.space.pro", "com.excelliance.multiaccounts", "com.ludashi.dualspace",
+            "com.samsung.knox.securefolder", "com.samsung.android.knox.containercore",
+            "com.huawei.privatespace", "com.coloros.childrenspace", "com.oplus.securityspace"
+        )
+
+        /** Settings screens for second space, extra users, guests and work / private profiles. */
+        val SPACE_PAGES = listOf(
+            "second space", "create second space", "switch to second space", "go to second space",
+            "dual apps", "app twin", "clone app", "parallel apps", "secure folder", "private space",
+            "multiple users", "add user", "add guest", "switch to guest", "guest mode", "new user",
+            "add new user", "work profile", "set up work profile",
+            "második tér", "masodik ter", "második terület", "masodik terulet",
+            "kettős alkalmazás", "kettos alkalmazas", "dupla alkalmazás", "dupla alkalmazas",
+            "alkalmazásklón", "alkalmazasklon", "privát tér", "privat ter", "biztonságos mappa",
+            "több felhasználó", "tobb felhasznalo", "felhasználó hozzáadása", "felhasznalo hozzaadasa",
+            "vendég hozzáadása", "vendeg hozzaadasa", "váltás vendégre", "valtas vendegre",
+            "vendég mód", "vendeg mod", "új felhasználó", "uj felhasznalo", "munkahelyi profil"
+        )
+
         /** System surfaces that never show web pages; skipped by the in-app WebView check. */
         val NON_WEB = setOf(
             "com.android.systemui", "com.google.android.inputmethod.latin", "com.android.vending",
@@ -284,7 +312,7 @@ class GuardAccessibilityService : AccessibilityService() {
 
         // Uninstall / force-stop / deactivate screens must be reacted to on EVERY event with no
         // cooldown, otherwise they can be won by spamming the screen open faster than the guard.
-        val isTamper = pkg in SETTINGS || pkg in BYPASS_APPS || pkg == VPN_DIALOGS
+        val isTamper = pkg in SETTINGS || pkg in BYPASS_APPS || pkg in SPACE_APPS || pkg == VPN_DIALOGS
 
         val now = SystemClock.uptimeMillis()
         val frequent = event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
@@ -314,6 +342,10 @@ class GuardAccessibilityService : AccessibilityService() {
 
         // Whole-app blocks don't need the view tree.
         if (pkg in BYPASS_APPS) return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        if (pkg in SPACE_APPS) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            return act(GLOBAL_ACTION_HOME, getString(R.string.space_blocked))
+        }
         if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
             return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
         }
@@ -420,7 +452,7 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun isInteresting(pkg: String) =
         pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
             pkg in FACEBOOK || pkg in FEED_APPS || pkg in SOCIAL_APPS || pkg in BYPASS_APPS ||
-            pkg in SETTINGS || isBrowser(pkg)
+            pkg in SETTINGS || pkg in SPACE_APPS || isBrowser(pkg)
 
     /** Known browsers, every app that opens web links like a browser, and anything named "browser". */
     private fun isBrowser(pkg: String) =
@@ -709,6 +741,14 @@ class GuardAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_BACK)
             performGlobalAction(GLOBAL_ACTION_HOME)
             toast(getString(R.string.tamper_blocked))
+            return
+        }
+        // Second space, dual apps, extra users / guests and work profiles run outside the filter.
+        if (SPACE_PAGES.any { text.contains(it) }) {
+            lastAction = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(getString(R.string.space_blocked))
             return
         }
         // A custom Private DNS hostname would route lookups around the filter.
