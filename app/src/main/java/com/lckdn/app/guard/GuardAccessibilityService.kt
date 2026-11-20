@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -140,7 +141,31 @@ class GuardAccessibilityService : AccessibilityService() {
             "com.samsung.android.lool", "com.samsung.android.packageinstaller",
             "com.coloros.safecenter", "com.oplus.safecenter", "com.coloros.phonemanager",
             "com.iqoo.secure", "com.vivo.permissionmanager", "com.vivo.appfilter",
-            "com.huawei.systemmanager", "com.android.settings.overlay"
+            "com.huawei.systemmanager", "com.android.settings.overlay",
+            // Autostart / background / battery managers (Xiaomi, Samsung, Oppo, Vivo, Huawei)
+            "com.miui.powerkeeper", "com.miui.permcenter", "com.xiaomi.misettings",
+            "com.miui.securityadd", "com.miui.battery", "com.samsung.android.sm.devicesecurity",
+            "com.samsung.android.sm", "com.samsung.android.sm_cn", "com.oplus.battery",
+            "com.coloros.oppoguardelf", "com.oplus.startupapp", "com.coloros.startupapp",
+            "com.vivo.abe", "com.iqoo.powersaving", "com.huawei.powergenie"
+        )
+
+        /**
+         * Pages that let an app be stopped from starting or running in the background (Xiaomi
+         * "Autostart", battery saver / restrictions, "pause app activity"...). Turning these off
+         * for LCKDN kills the filter, so while locked they can only be used to turn it back ON.
+         */
+        val BACKGROUND_PAGES = listOf(
+            "autostart", "auto-start", "auto start", "auto-launch", "auto launch", "startup",
+            "run in background", "background activity", "background running", "background usage",
+            "background restriction", "battery saver", "battery optimi", "battery usage",
+            "app battery", "no restrictions", "restricted", "unrestricted", "optimized",
+            "pause app activity", "manage app if unused", "sleeping apps", "deep sleeping",
+            "app launch", "power management",
+            "automatikus indítás", "automatikus inditas", "automatikus indulás", "automatikus indulas",
+            "háttér", "hatter", "akkumulátor", "akkumulator", "energiatakarék", "energiatakarek",
+            "korlátozás", "korlatozas", "korlátlan", "korlatlan", "optimalizál", "optimalizal",
+            "alkalmazástevékenység", "szüneteltet", "szuneteltet", "indítás", "inditas"
         )
 
         val DANGER = listOf(
@@ -646,10 +671,54 @@ class GuardAccessibilityService : AccessibilityService() {
             toast(getString(R.string.tamper_blocked))
             return
         }
+        // Autostart / background / battery pages: block them unless they are being used to turn
+        // LCKDN's permission back ON (its switch is off) or to exempt it from battery limits.
+        if (aboutUs && BACKGROUND_PAGES.any { text.contains(it) }) {
+            val switchOn = lckdnSwitchState(root)
+            val batteryExempt = getSystemService(PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(packageName) == true
+            val turningOn = switchOn == false || (switchOn == null && !batteryExempt)
+            if (!turningOn) {
+                lastAction = SystemClock.uptimeMillis()
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                toast(getString(R.string.tamper_blocked))
+                return
+            }
+        }
         // A custom Private DNS hostname would route lookups around the filter.
         if (text.contains("private dns provider hostname") || text.contains("private dns hostname")) {
             act(GLOBAL_ACTION_BACK, getString(R.string.tamper_blocked))
         }
+    }
+
+    /**
+     * The on/off state of the switch (or checked option) in LCKDN's row on a settings list,
+     * or null if no such control is found next to the "LCKDN" label.
+     */
+    private fun lckdnSwitchState(root: AccessibilityNodeInfo): Boolean? {
+        for (label in root.findAccessibilityNodeInfosByText("LCKDN").orEmpty()) {
+            var row: AccessibilityNodeInfo? = label
+            for (level in 0 until 4) {
+                row = row?.parent ?: break
+                val control = findCheckable(row, 60)
+                if (control != null) return control.isChecked
+            }
+        }
+        return null
+    }
+
+    private fun findCheckable(start: AccessibilityNodeInfo, limit: Int): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(start)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < limit) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isCheckable) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return null
     }
 
     /** Lower-cased text + content descriptions of the visible tree (bounded). */
