@@ -632,7 +632,7 @@ class GuardAccessibilityService : AccessibilityService() {
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var seen = 0
-        while (stack.isNotEmpty() && seen < 300) {
+        while (stack.isNotEmpty() && seen < 500) {
             val node = stack.removeLast()
             seen++
             val id = node.viewIdResourceName?.lowercase()
@@ -644,7 +644,7 @@ class GuardAccessibilityService : AccessibilityService() {
             if ((looksLikeBar || node.isEditable) && !t.isNullOrBlank()) out.add(node)
             else if (looksLikeUrl) out.add(node)
             // Don't descend into the web page itself here; that is read separately.
-            if (node.className?.contains("WebView") == true) continue
+            if (isWebContent(node)) continue
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
         return out
@@ -683,6 +683,12 @@ class GuardAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** A rendered web page: Android WebView (Chrome engine) or GeckoView (Firefox engine). */
+    private fun isWebContent(node: AccessibilityNodeInfo): Boolean {
+        val c = node.className?.toString() ?: return false
+        return c.contains("WebView") || c.contains("GeckoView", ignoreCase = true)
+    }
+
     private fun findWebView(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
@@ -690,7 +696,7 @@ class GuardAccessibilityService : AccessibilityService() {
         while (stack.isNotEmpty() && seen < 400) {
             val node = stack.removeLast()
             seen++
-            if (node.className?.contains("WebView") == true && node.isVisibleToUser) return node
+            if (isWebContent(node) && node.isVisibleToUser) return node
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
         return null
