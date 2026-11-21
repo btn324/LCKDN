@@ -579,7 +579,15 @@ class GuardAccessibilityService : AccessibilityService() {
         // known sites, and the rendered page itself is read.
         val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
         var url: String? = null
-        for (node in addressBarNodes(root, pkg)) {
+        val bar = addressBarNodes(root, pkg)
+        // The school system (e-KRÉTA) is trusted: if the browser shows its address anywhere in
+        // its own toolbar, the page is not scanned for words at all.
+        if (bar.any {
+                Blocklist.isTrustedHost(it.text?.toString().orEmpty()) ||
+                    Blocklist.isTrustedHost(it.contentDescription?.toString().orEmpty())
+            }
+        ) return
+        for (node in bar) {
             val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
             if (url == null) url = text
             if (blockSocial && Blocklist.isSocialHost(text)) return blockPage(getString(R.string.page_blocked))
@@ -597,8 +605,6 @@ class GuardAccessibilityService : AccessibilityService() {
             }
             return
         }
-        // The school system (e-KRÉTA) is trusted: its own pages are not scanned for words.
-        if (url != null && Blocklist.isTrustedHost(url)) return
         // Read the rendered page (title, visible text, image alt text), so explicit pages, image
         // results and NSFW posts are closed even on sites the domain list doesn't know.
         val page = collectText(root, limit = if (pkg in FIREFOX) 400 else 700)
@@ -621,8 +627,8 @@ class GuardAccessibilityService : AccessibilityService() {
         for (id in BROWSERS[pkg].orEmpty()) {
             root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.let { out.addAll(it) }
         }
-        // Known address bar found: no need to walk the tree (keeps the browser responsive).
-        if (out.any { !it.text.isNullOrBlank() }) return out
+        // Known address bar showing an address: no need to walk the tree (keeps it responsive).
+        if (out.any { URL_LIKE.matches(it.text?.toString()?.trim()?.lowercase().orEmpty()) }) return out
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var seen = 0
@@ -631,13 +637,21 @@ class GuardAccessibilityService : AccessibilityService() {
             seen++
             val id = node.viewIdResourceName?.lowercase()
             val looksLikeBar = id != null && ADDRESS_ID_HINTS.any { id.contains(it) }
-            if ((looksLikeBar || node.isEditable) && !node.text.isNullOrBlank()) out.add(node)
+            val t = node.text?.toString()
+            val d = node.contentDescription?.toString()
+            val looksLikeUrl = (t != null && URL_LIKE.matches(t.trim().lowercase())) ||
+                (d != null && URL_LIKE.matches(d.trim().lowercase()))
+            if ((looksLikeBar || node.isEditable) && !t.isNullOrBlank()) out.add(node)
+            else if (looksLikeUrl) out.add(node)
             // Don't descend into the web page itself here; that is read separately.
             if (node.className?.contains("WebView") == true) continue
             for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
         }
         return out
     }
+
+    /** Text shaped like a web address ("idp.e-kreta.hu/...", "https://x.com"), no spaces. */
+    private val URL_LIKE = Regex("^(https?://)?([a-z0-9-]+\\.)+[a-z]{2,}(:[0-9]+)?(/\\S*)?$")
 
     private val ADDRESS_ID_HINTS = listOf(
         "url", "address", "omnibox", "location", "search_box", "searchbox", "search_edit",
@@ -650,7 +664,7 @@ class GuardAccessibilityService : AccessibilityService() {
      */
     private fun checkInAppWebView(pkg: String) {
         if (pkg in NON_WEB || pkg.contains("launcher") || pkg.contains("inputmethod") ||
-            pkg.contains("keyboard") || pkg.startsWith("hu.ekreta.")  // official e-KRÉTA apps
+            pkg.contains("keyboard") || pkg.contains("kreta")  // e-KRÉTA apps
         ) return
         val now = SystemClock.uptimeMillis()
         if (now - (lastCheck[pkg] ?: 0L) < 300 || now - lastAction < 600) return
