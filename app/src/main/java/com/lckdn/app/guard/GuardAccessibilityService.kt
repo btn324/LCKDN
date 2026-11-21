@@ -597,6 +597,8 @@ class GuardAccessibilityService : AccessibilityService() {
             }
             return
         }
+        // The school system (e-KRÉTA) is trusted: its own pages are not scanned for words.
+        if (url != null && Blocklist.isTrustedHost(url)) return
         // Read the rendered page (title, visible text, image alt text), so explicit pages, image
         // results and NSFW posts are closed even on sites the domain list doesn't know.
         val page = collectText(root, limit = if (pkg in FIREFOX) 400 else 700)
@@ -648,7 +650,7 @@ class GuardAccessibilityService : AccessibilityService() {
      */
     private fun checkInAppWebView(pkg: String) {
         if (pkg in NON_WEB || pkg.contains("launcher") || pkg.contains("inputmethod") ||
-            pkg.contains("keyboard")
+            pkg.contains("keyboard") || pkg.startsWith("hu.ekreta.")  // official e-KRÉTA apps
         ) return
         val now = SystemClock.uptimeMillis()
         if (now - (lastCheck[pkg] ?: 0L) < 300 || now - lastAction < 600) return

@@ -205,8 +205,22 @@ object Blocklist {
         return false
     }
 
+    /**
+     * Hungarian school system (e-KRÉTA). Its login links carry long random codes and its
+     * school lists contain place names that can accidentally contain a blocked fragment, so
+     * its own domains are never treated as adult. Exact domains only, nothing else.
+     */
+    private val trustedSchoolDomains = hashSetOf("e-kreta.hu", "ekreta.hu", "kreta.hu")
+
+    /** True if the address / host belongs to the trusted school system above. */
+    fun isTrustedHost(raw: String): Boolean {
+        val host = hostOf(fold(raw)) ?: return false
+        return matchesSuffix(host, trustedSchoolDomains)
+    }
+
     fun isAdultDomain(domain: String): Boolean {
         val d = fold(domain.trimEnd('.'))
+        if (matchesSuffix(d, trustedSchoolDomains)) return false
         if (adultTlds.any { d.endsWith(it) }) return true
         if (matchesSuffix(d, adultDomains)) return true
         return containsAdultKeyword(d)
@@ -216,6 +230,7 @@ object Blocklist {
     fun isExplicitText(raw: String): Boolean {
         val text = fold(decode(raw))
         val host = hostOf(text)
+        if (host != null && matchesSuffix(host, trustedSchoolDomains)) return false
         if (host != null && isAdultDomain(host)) return true
         return containsAdultKeyword(text)
     }
