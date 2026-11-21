@@ -664,7 +664,7 @@ class GuardAccessibilityService : AccessibilityService() {
      */
     private fun checkInAppWebView(pkg: String) {
         if (pkg in NON_WEB || pkg.contains("launcher") || pkg.contains("inputmethod") ||
-            pkg.contains("keyboard") || pkg.contains("kreta")  // e-KRÉTA apps
+            pkg.contains("keyboard") || isSchoolApp(pkg)
         ) return
         val now = SystemClock.uptimeMillis()
         if (now - (lastCheck[pkg] ?: 0L) < 300 || now - lastAction < 600) return
@@ -687,6 +687,26 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun isWebContent(node: AccessibilityNodeInfo): Boolean {
         val c = node.className?.toString() ?: return false
         return c.contains("WebView") || c.contains("GeckoView", ignoreCase = true)
+    }
+
+    private val schoolAppCache = HashMap<String, Boolean>()
+
+    /**
+     * e-KRÉTA school apps (official and the Filc / reFilc clients). Their built-in login page is
+     * the trusted school system, so it is not scanned. Recognised by package or by the app's
+     * name on the phone. Only in-app pages of these apps; browsers are filtered as always.
+     */
+    private fun isSchoolApp(pkg: String): Boolean = schoolAppCache.getOrPut(pkg) {
+        if (pkg.contains("kreta") || pkg.contains("filc")) return@getOrPut true
+        val label = try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            ""
+        }
+        val l = java.text.Normalizer.normalize(label.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+        l.contains("kreta") || l.contains("filc")
     }
 
     private fun findWebView(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
