@@ -340,6 +340,23 @@ object Blocklist {
         return false
     }
 
+    /**
+     * Diagnostics for the block screen: which terms made [isExplicitContent] /
+     * [isExplicitText] fire, so false positives can be found and fixed precisely.
+     */
+    fun explain(raw: String): String {
+        val f = fold(decode(raw))
+        val found = ArrayList<String>()
+        hostOf(f)?.let { h ->
+            if (adultTlds.any { h.endsWith(it) }) found.add("tld")
+            if (matchesSuffix(h, adultDomains)) found.add("domain:$h")
+        }
+        strongCore.filter { hasKeyword(f, it) }.forEach { found.add("!$it") }
+        adultKeywords.filter { hasKeyword(f, it) }.forEach { found.add(it) }
+        boundaryKeywords.filter { hasWord(f, it) }.forEach { found.add("[$it]") }
+        return found.distinct().take(6).joinToString(", ").ifEmpty { "-" }
+    }
+
     private fun decode(raw: String): String =
         try {
             URLDecoder.decode(raw, "UTF-8")

@@ -478,7 +478,11 @@ class GuardAccessibilityService : AccessibilityService() {
         }
         val text = collectText(root, limit = 1200)
         if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) }) {
-            blockPage(getString(R.string.content_blocked))
+            val g = FEED_GATES.firstOrNull { text.contains(it) }
+            blockPage(
+                getString(R.string.content_blocked),
+                "feed · ${root.packageName} · ${g ?: Blocklist.explain(text)}"
+            )
         }
     }
 
@@ -558,7 +562,7 @@ class GuardAccessibilityService : AccessibilityService() {
         if (hasVisibleId(root, YT_PLAYER_IDS)) {
             val title = firstTextOf(root, YT_TITLE_IDS)
             if (title != null && Blocklist.isExplicitText(title)) {
-                blockPage(getString(R.string.video_blocked))
+                blockPage(getString(R.string.video_blocked), "youtube · ${Blocklist.explain(title)}")
             }
         }
     }
@@ -575,6 +579,8 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
+        // e-KRÉTA apps can register as link handlers and land here; their login is trusted.
+        if (isSchoolApp(pkg)) return
         // Strict mode is always on while locked: words in addresses and searches count, not only
         // known sites, and the rendered page itself is read.
         val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
@@ -590,8 +596,12 @@ class GuardAccessibilityService : AccessibilityService() {
         for (node in bar) {
             val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
             if (url == null) url = text
-            if (blockSocial && Blocklist.isSocialHost(text)) return blockPage(getString(R.string.page_blocked))
-            if (Blocklist.isUnsafeMediaSearch(text)) return blockPage(getString(R.string.page_blocked))
+            if (blockSocial && Blocklist.isSocialHost(text)) {
+                return blockPage(getString(R.string.page_blocked), "social site · $pkg")
+            }
+            if (Blocklist.isUnsafeMediaSearch(text)) {
+                return blockPage(getString(R.string.page_blocked), "unsafe image search · $pkg")
+            }
             if (!Blocklist.isExplicitText(text)) continue
             if (node.isFocused && node.isEditable) {
                 val args = Bundle().apply {
@@ -601,7 +611,7 @@ class GuardAccessibilityService : AccessibilityService() {
                 toast(getString(R.string.search_blocked))
                 lastAction = SystemClock.uptimeMillis()
             } else {
-                blockPage(getString(R.string.page_blocked))
+                blockPage(getString(R.string.page_blocked), "address · $pkg · ${Blocklist.explain(text)}")
             }
             return
         }
@@ -610,10 +620,14 @@ class GuardAccessibilityService : AccessibilityService() {
         val page = collectText(root, limit = if (pkg in FIREFOX) 400 else 700)
         val onReddit = (url != null && Blocklist.isRedditHost(url)) || page.contains("reddit")
         if (onReddit && Blocklist.isRedditNsfw((url ?: "") + "\n" + page)) {
-            return blockPage(getString(R.string.page_blocked))
+            return blockPage(getString(R.string.page_blocked), "reddit nsfw · $pkg")
         }
         if (Blocklist.isExplicitContent(page) || FEED_GATES.any { page.contains(it) }) {
-            blockPage(getString(R.string.page_blocked))
+            val g = FEED_GATES.firstOrNull { page.contains(it) }
+            blockPage(
+                getString(R.string.page_blocked),
+                "page · $pkg · url=${url ?: "?"} · ${g ?: Blocklist.explain(page)}"
+            )
         }
     }
 
@@ -677,7 +691,11 @@ class GuardAccessibilityService : AccessibilityService() {
             if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) } ||
                 (text.contains("reddit") && Blocklist.isRedditNsfw(text))
             ) {
-                blockPage(getString(R.string.page_blocked))
+                val g = FEED_GATES.firstOrNull { text.contains(it) }
+                blockPage(
+                    getString(R.string.page_blocked),
+                    "in-app · $pkg · ${g ?: if (text.contains("reddit")) "reddit" else Blocklist.explain(text)}"
+                )
             }
         } catch (_: Exception) {
         }
@@ -884,14 +902,14 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     /** Black the screen out first (so nothing can be seen), then leave the page. */
-    private fun blockPage(reason: String) {
+    private fun blockPage(reason: String, why: String = "") {
         lastAction = SystemClock.uptimeMillis()
         censor?.flash()
         performGlobalAction(GLOBAL_ACTION_BACK)
-        showBlocked(reason)
+        showBlocked(reason, why)
     }
 
-    private fun showBlocked(reason: String) {
+    private fun showBlocked(reason: String, why: String = "") {
         lastAction = SystemClock.uptimeMillis()
         censor?.flash()   // instantly black out the screen before anything else can be seen
         try {
@@ -899,6 +917,7 @@ class GuardAccessibilityService : AccessibilityService() {
                 Intent(this, BlockedActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     .putExtra(BlockedActivity.EXTRA_REASON, reason)
+                    .putExtra(BlockedActivity.EXTRA_DETAIL, why)
             )
         } catch (_: Exception) {
             toast(reason)

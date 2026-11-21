@@ -12,6 +12,8 @@ class BlockedActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_REASON = "reason"
+        /** Small diagnostic line (which check fired and why), to report false positives. */
+        const val EXTRA_DETAIL = "detail"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,8 +32,10 @@ class BlockedActivity : AppCompatActivity() {
     }
 
     private fun bind(intent: Intent?) {
+        val reason = intent?.getStringExtra(EXTRA_REASON) ?: getString(R.string.page_blocked)
+        val detail = intent?.getStringExtra(EXTRA_DETAIL).orEmpty()
         findViewById<TextView>(R.id.reason).text =
-            intent?.getStringExtra(EXTRA_REASON) ?: getString(R.string.page_blocked)
+            if (detail.isBlank()) reason else "$reason\n\n($detail)"
         val q = Quotes.random()
         findViewById<TextView>(R.id.quote).text = "“${q.text}”"
         findViewById<TextView>(R.id.quoteAuthor).text = q.author.uppercase()
