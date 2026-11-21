@@ -170,7 +170,7 @@ class GuardAccessibilityService : AccessibilityService() {
             "com.iqoo.secure", "com.vivo.permissionmanager", "com.vivo.appfilter",
             "com.huawei.systemmanager", "com.android.settings.overlay",
             // Autostart / background / battery managers (Xiaomi, Samsung, Oppo, Vivo, Huawei)
-            "com.miui.powerkeeper", "com.miui.permcenter", "com.xiaomi.misettings",
+            "com.miui.powerkeeper", "com.miui.permcenter", "com.miui.notification", "com.xiaomi.misettings",
             "com.miui.securityadd", "com.miui.battery", "com.samsung.android.sm.devicesecurity",
             "com.samsung.android.sm", "com.samsung.android.sm_cn", "com.oplus.battery",
             "com.coloros.oppoguardelf", "com.oplus.startupapp", "com.coloros.startupapp",
@@ -189,6 +189,8 @@ class GuardAccessibilityService : AccessibilityService() {
             "app battery", "no restrictions", "restricted", "unrestricted", "optimized",
             "pause app activity", "manage app if unused", "sleeping apps", "deep sleeping",
             "app launch", "power management",
+            // Notification settings: with LCKDN's notifications off, the phone may kill it.
+            "notification", "show notifications", "allow notifications", "értesítés", "ertesites",
             "automatikus indítás", "automatikus inditas", "automatikus indulás", "automatikus indulas",
             "háttér", "hatter", "akkumulátor", "akkumulator", "energiatakarék", "energiatakarek",
             "korlátozás", "korlatozas", "korlátlan", "korlatlan", "optimalizál", "optimalizal",
@@ -303,6 +305,10 @@ class GuardAccessibilityService : AccessibilityService() {
         }
 
         if (pkg == packageName) return
+        if (pkg == SYSTEM_UI) {
+            checkNotificationShade()
+            return
+        }
         if (!isInteresting(pkg)) {
             // Any other app: if it is showing a web page (an in-app browser / WebView), read it.
             checkInAppWebView(pkg)
@@ -705,6 +711,40 @@ class GuardAccessibilityService : AccessibilityService() {
     private fun isWebContent(node: AccessibilityNodeInfo): Boolean {
         val c = node.className?.toString() ?: return false
         return c.contains("WebView") || c.contains("GeckoView", ignoreCase = true)
+    }
+
+    private val SYSTEM_UI = "com.android.systemui"
+
+    /** "Turn off notifications" controls shown when a notification is long-pressed / swiped. */
+    private val SHADE_DANGER = listOf(
+        "turn off notifications", "stop notifications", "don't show notifications",
+        "dont show notifications", "block notifications", "disable notifications",
+        "értesítések kikapcsolása", "ertesitesek kikapcsolasa", "értesítések letiltása",
+        "ertesitesek letiltasa", "ne jelenjenek meg", "értesítések leállítása",
+        "ertesitesek leallitasa"
+    )
+
+    /**
+     * The notification shade: long-pressing or swiping LCKDN's notification offers to turn its
+     * notifications off (which lets the phone kill the filter). Close those controls.
+     */
+    private fun checkNotificationShade() {
+        val now = SystemClock.uptimeMillis()
+        if (now - (lastCheck[SYSTEM_UI] ?: 0L) < 200) return
+        lastCheck[SYSTEM_UI] = now
+        try {
+            val root = rootInActiveWindow ?: return
+            if (root.packageName?.toString() != SYSTEM_UI) return
+            val labels = root.findAccessibilityNodeInfosByText("LCKDN").orEmpty()
+            if (labels.none { it.isVisibleToUser }) return
+            val text = collectText(root, limit = 400)
+            if (SHADE_DANGER.any { text.contains(it) }) {
+                lastAction = now
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                toast(getString(R.string.tamper_blocked))
+            }
+        } catch (_: Exception) {
+        }
     }
 
     private val schoolAppCache = HashMap<String, Boolean>()
