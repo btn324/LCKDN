@@ -119,7 +119,7 @@ object Blocklist {
         "desnuda", "desnudo", "tetas", "cono", "coño", "follar", "corrida", "mamada", "buceta",
         "peitos", "foder", "gozada", "putaria", "safada", "xota", "siririca", "verga",
         // Italian
-        "nuda", "tette", "figa", "scopare", "troia", "pompino", "sborra",
+        "nuda", "figa", "scopare", "troia", "pompino", "sborra",
         // Russian / Ukrainian (translit)
         "siski", "pizda", "trah", "eblja", "minet", "golaya", "porevo", "porno",
         // Polish / Czech / Slovak / Romanian
@@ -158,7 +158,7 @@ object Blocklist {
         "faszen", "faszenet", "dugasz", "dugaszol", "dugaszt",
         // English words containing sex / cock / anal / strip / nude / dick / slut / clit / basz / kefir
         "sextet", "sexton", "susse", "cockroach", "cockatoo", "cockney", "hitchcock", "woodcock",
-        "kanal", "analiz", "analys", "cocker", "babcock", "thorny", "petits", "strip mall", "stripe",
+        "kanal", "analiz", "analitik", "analfabet", "analys", "cocker", "babcock", "thorny", "petits", "strip mall", "stripe",
         "striped", "stripes", "airstrip", "comic strip", "filmstrip", "outstrip", "gaza strip",
         "nudel", "denude", "dickinson", "benedict", "dickens", "predict", "verdict", "addict",
         "edict", "contradict", "dictat", "diction", "dictionar", "jurisdict", "indict", "valedict",
@@ -227,12 +227,19 @@ object Blocklist {
     }
 
     /** Text from a browser address bar: a URL, a bare host, or a search query. */
+    /**
+     * Terms that are explicit in another language but everyday words in Hungarian ("tette" =
+     * did / put; Italian = breasts). They count only in searches and addresses, never in page
+     * text, where the Hungarian word is everywhere.
+     */
+    private val searchOnlyKeywords = listOf("tette").map { fold(it) }
+
     fun isExplicitText(raw: String): Boolean {
         val text = fold(decode(raw))
         val host = hostOf(text)
         if (host != null && matchesSuffix(host, trustedSchoolDomains)) return false
         if (host != null && isAdultDomain(host)) return true
-        return containsAdultKeyword(text)
+        return containsAdultKeyword(text) || searchOnlyKeywords.any { hasKeyword(text, it) }
     }
 
     /** Only the host part of what's in the address bar. Used when strict mode is off. */
