@@ -369,4 +369,672 @@ class GuardAccessibilityService : AccessibilityService() {
             return act(GLOBAL_ACTION_HOME, getString(R.string.space_blocked))
         }
         if (pkg in TIKTOK && Prefs.flag(this, Prefs.BLOCK_TIKTOK)) {
-            return act(GLOBAL_ACTION_HOME, ge 
+            return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        }
+        if (pkg in SOCIAL_APPS && Prefs.flag(this, Prefs.BLOCK_SOCIAL)) {
+            return act(GLOBAL_ACTION_HOME, getString(R.string.app_blocked))
+        }
+
+        val root = rootInActiveWindow ?: return
+        val rootPkg = root.packageName?.toString() ?: pkg
+        try {
+            when {
+                rootPkg == YOUTUBE -> {
+                    if (Prefs.flag(this, Prefs.BLOCK_SHORTS) && !shortsReelsAllowedNow() &&
+                        (hasVisibleId(root, YT_SHORTS_IDS) || isImmersiveShortVideo(root, "short"))
+                    ) {
+                        act(GLOBAL_ACTION_BACK, getString(R.string.shorts_blocked))
+                    } else {
+                        checkYouTube(root)
+                    }
+                }
+
+                rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow() ->
+                    // clips_* ids only. No "reel" content fallback here, since Instagram Stories
+                    // are also internally "reels" and must stay usable.
+                    if (hasVisibleId(root, IG_REELS_IDS)) {
+                        act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    } else {
+                        checkFeedApp(root)
+                    }
+
+                rootPkg == INSTAGRAM -> checkFeedApp(root)
+
+                rootPkg in FACEBOOK && Prefs.flag(this, Prefs.BLOCK_REELS) -> {
+                    if (!shortsReelsAllowedNow() && isImmersiveReel(root)) act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
+                    else checkFeedApp(root)
+                }
+
+                rootPkg in FACEBOOK -> checkFeedApp(root)
+
+                rootPkg in FEED_APPS -> checkFeedApp(root)
+
+                isBrowser(rootPkg) -> checkBrowser(root, rootPkg)
+
+                rootPkg == VPN_DIALOGS -> {
+                    if (!collectText(root).contains("lckdn")) act(GLOBAL_ACTION_BACK, getString(R.string.vpn_blocked))
+                }
+
+                rootPkg in SETTINGS -> checkTamper(root)
+            }
+        } catch (_: Exception) {
+            // The view tree can change under us; just wait for the next event.
+        }
+    }
+
+    /** Covers the Shorts / Reels tab button while that app is on screen. */
+    private fun updateTabCover() {
+        val c = cover ?: return
+        val root = rootInActiveWindow ?: return
+        val front = root.packageName?.toString() ?: return
+        val (label, ids, dark, enabled) = when {
+            front == YOUTUBE -> TabSpec("Shorts", YT_TAB_IDS, 0xFF0F0F0F.toInt(), Prefs.flag(this, Prefs.BLOCK_SHORTS) && !shortsReelsAllowedNow())
+            front == INSTAGRAM -> TabSpec("Reels", IG_TAB_IDS, 0xFF000000.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow())
+            front in FACEBOOK -> TabSpec("Reels", emptyList(), 0xFF18191A.toInt(), Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow())
+            else -> return
+        }
+        if (!enabled) {
+            c.hide()
+            return
+        }
+        val bounds = findTabBounds(root, label, ids)
+        if (bounds == null) c.hide() else c.show(front, bounds, dark)
+    }
+
+    private data class TabSpec(val label: String, val ids: List<String>, val dark: Int, val enabled: Boolean)
+
+    /** Bounds of a bottom-bar tab: by view id first, then by its label/description. */
+    private fun findTabBounds(root: AccessibilityNodeInfo, label: String, ids: List<String>): Rect? {
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val candidates = ids.flatMap { root.findAccessibilityNodeInfosByViewId(it).orEmpty() } +
+            root.findAccessibilityNodeInfosByText(label).orEmpty()
+        for (node in candidates) {
+            if (!node.isVisibleToUser) continue
+            val matchesLabel = node.viewIdResourceName in ids ||
+                node.text?.toString().equals(label, ignoreCase = true) ||
+                node.contentDescription?.toString()?.startsWith(label, ignoreCase = true) == true
+            if (!matchesLabel) continue
+            var target: AccessibilityNodeInfo = node
+            var hops = 0
+            while (!target.isClickable && hops < 3) {
+                target = target.parent ?: break
+                hops++
+            }
+            val r = Rect()
+            target.getBoundsInScreen(r)
+            val inBottomBar = r.centerY() > screenH * 0.78f
+            val tabSized = r.width() in 1 until screenW / 2 && r.height() in 1 until screenH / 6
+            if (inBottomBar && tabSized) return r
+        }
+        return null
+    }
+
+    private fun isInteresting(pkg: String) =
+        pkg == YOUTUBE || pkg == INSTAGRAM || pkg == VPN_DIALOGS || pkg in TIKTOK ||
+            pkg in FACEBOOK || pkg in FEED_APPS || pkg in SOCIAL_APPS || pkg in BYPASS_APPS ||
+            pkg in SETTINGS || pkg in SPACE_APPS || isBrowser(pkg)
+
+    /** Known browsers, every app that opens web links like a browser, and anything named "browser". */
+    private fun isBrowser(pkg: String) =
+        pkg in BROWSERS || pkg in otherBrowsers || pkg.contains("browser", ignoreCase = true)
+
+    /**
+     * Reddit, X, Telegram and other feed apps: clear explicit searches, close explicit posts by
+     * their visible text, and back out of "sensitive / 18+" gates. Image-only content with no
+     * text cannot be read by accessibility, so this is a strong filter, not a perfect one.
+     */
+    private fun checkFeedApp(root: AccessibilityNodeInfo) {
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused?.isEditable == true) {
+            val typed = focused.text?.toString()
+            if (typed != null && Blocklist.isExplicitText(typed)) {
+                val args = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                }
+                focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                toast(getString(R.string.search_blocked))
+                lastAction = SystemClock.uptimeMillis()
+                return
+            }
+        }
+        val text = collectText(root, limit = 1200)
+        if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) }) {
+            val g = FEED_GATES.firstOrNull { text.contains(it) }
+            blockPage(
+                getString(R.string.content_blocked),
+                "feed · ${root.packageName} · ${g ?: Blocklist.explain(text)}"
+            )
+        }
+    }
+
+    /**
+     * Facebook hides its view ids, so a Reel is recognised by its full-screen immersive video:
+     * a tall node (most of the screen) whose description mentions a reel or its overlay controls.
+     */
+    private fun isImmersiveReel(root: AccessibilityNodeInfo): Boolean = isImmersiveShortVideo(root, "reel")
+
+    /**
+     * A full-screen vertical short-video player, recognised by a tall node (most of the screen)
+     * whose description mentions the feed name ([keyword] = "reel" or "short"). Used as a fallback
+     * when the app's view ids change, and for apps (Facebook) that hide their ids entirely.
+     */
+    private fun isImmersiveShortVideo(root: AccessibilityNodeInfo, keyword: String): Boolean {
+        val screenH = resources.displayMetrics.heightPixels
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        var tallVideo = false
+        var words = 0
+        val rect = Rect()
+        while (stack.isNotEmpty() && seen < 500) {
+            val node = stack.removeLast()
+            seen++
+            val desc = (node.contentDescription?.toString() ?: node.text?.toString())?.lowercase()
+            if (desc != null && node.isVisibleToUser) {
+                node.getBoundsInScreen(rect)
+                val tall = rect.height() > screenH * 0.6f
+                if (tall && (desc.contains(keyword) || (node.className?.contains("TextureView") == true))) tallVideo = true
+                if (desc.contains(keyword)) words++
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return tallVideo && words >= 1
+    }
+
+    /**
+     * On a real school day (Mon–Fri, not a public holiday or school break) between 07:00 and 14:10,
+     * Shorts and Reels are allowed, if the user turned that exception on. On weekends, holidays,
+     * breaks (autumn / winter / spring / summer) and outside those hours they stay blocked — and
+     * everything else (porn, etc.) stays blocked at all times.
+     */
+    private fun shortsReelsAllowedNow(): Boolean {
+        if (!Prefs.flag(this, Prefs.ALLOW_SHORTS_SCHOOL)) return false
+        if (!com.lckdn.app.Holidays.isSchoolDay(java.time.LocalDate.now())) return false
+        val now = java.time.LocalTime.now()
+        return !now.isBefore(java.time.LocalTime.of(7, 0)) && !now.isAfter(java.time.LocalTime.of(14, 10))
+    }
+
+    private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
+        ids.any { id ->
+            root.findAccessibilityNodeInfosByViewId(id)?.any { it.isVisibleToUser } == true
+        }
+
+    /** Clears explicit YouTube searches and closes any video whose title is explicit. */
+    private fun checkYouTube(root: AccessibilityNodeInfo) {
+        // Explicit search query: clear it in place.
+        for (id in YT_SEARCH_IDS) {
+            for (node in root.findAccessibilityNodeInfosByViewId(id).orEmpty()) {
+                val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+                if (!Blocklist.isExplicitText(text)) continue
+                if (node.isEditable) {
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                    }
+                    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    toast(getString(R.string.search_blocked))
+                    lastAction = SystemClock.uptimeMillis()
+                } else {
+                    act(GLOBAL_ACTION_BACK, getString(R.string.search_blocked))
+                }
+                return
+            }
+        }
+        // Watching a regular video: if its title is explicit, leave the player.
+        if (hasVisibleId(root, YT_PLAYER_IDS)) {
+            val title = firstTextOf(root, YT_TITLE_IDS)
+            if (title != null && Blocklist.isExplicitText(title)) {
+                blockPage(getString(R.string.video_blocked), "youtube · ${Blocklist.explain(title)}")
+            }
+        }
+    }
+
+    private fun firstTextOf(root: AccessibilityNodeInfo, ids: List<String>): String? {
+        for (id in ids) {
+            for (node in root.findAccessibilityNodeInfosByViewId(id).orEmpty()) {
+                if (!node.isVisibleToUser) continue
+                val text = (node.text ?: node.contentDescription)?.toString()?.takeIf { it.isNotBlank() }
+                if (text != null) return text
+            }
+        }
+        return null
+    }
+
+    private fun checkBrowser(root: AccessibilityNodeInfo, pkg: String) {
+        // e-KRÉTA apps can register as link handlers and land here; their login is trusted.
+        if (isSchoolApp(pkg)) return
+        // Strict mode is always on while locked: words in addresses and searches count, not only
+        // known sites, and the rendered page itself is read.
+        val blockSocial = Prefs.flag(this, Prefs.BLOCK_SOCIAL)
+        var url: String? = null
+        val bar = addressBarNodes(root, pkg)
+        // The school system (e-KRÉTA) is trusted: if the browser shows its address anywhere in
+        // its own toolbar, the page is not scanned for words at all.
+        if (bar.any {
+                Blocklist.isTrustedHost(it.text?.toString().orEmpty()) ||
+                    Blocklist.isTrustedHost(it.contentDescription?.toString().orEmpty())
+            }
+        ) return
+        for (node in bar) {
+            val text = node.text?.toString()?.takeIf { it.isNotBlank() } ?: continue
+            if (url == null) url = text
+            if (blockSocial && Blocklist.isSocialHost(text)) {
+                return blockPage(getString(R.string.page_blocked), "social site · $pkg")
+            }
+            if (Blocklist.isUnsafeMediaSearch(text)) {
+                return blockPage(getString(R.string.page_blocked), "unsafe image search · $pkg")
+            }
+            if (!Blocklist.isExplicitText(text)) continue
+            if (node.isFocused && node.isEditable) {
+                val args = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                }
+                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                toast(getString(R.string.search_blocked))
+                lastAction = SystemClock.uptimeMillis()
+            } else {
+                blockPage(getString(R.string.page_blocked), "address · $pkg · ${Blocklist.explain(text)}")
+            }
+            return
+        }
+        // Read the rendered page (title, visible text, image alt text), so explicit pages, image
+        // results and NSFW posts are closed even on sites the domain list doesn't know.
+        val page = collectText(root, limit = if (pkg in FIREFOX) 400 else 700)
+        val onReddit = (url != null && Blocklist.isRedditHost(url)) || page.contains("reddit")
+        if (onReddit && Blocklist.isRedditNsfw((url ?: "") + "\n" + page)) {
+            return blockPage(getString(R.string.page_blocked), "reddit nsfw · $pkg")
+        }
+        if (Blocklist.isExplicitContent(page) || FEED_GATES.any { page.contains(it) }) {
+            val g = FEED_GATES.firstOrNull { page.contains(it) }
+            blockPage(
+                getString(R.string.page_blocked),
+                "page · $pkg · url=${url ?: "?"} · ${g ?: Blocklist.explain(page)}"
+            )
+        }
+    }
+
+    /**
+     * The address bar (and search box) of any browser: by its known view id first, then by
+     * looking for an editable field or a view whose id names a URL / address / omnibox, so
+     * browsers LCKDN has never seen are read too.
+     */
+    private fun addressBarNodes(root: AccessibilityNodeInfo, pkg: String): List<AccessibilityNodeInfo> {
+        val out = ArrayList<AccessibilityNodeInfo>()
+        for (id in BROWSERS[pkg].orEmpty()) {
+            root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.let { out.addAll(it) }
+        }
+        // Known address bar showing an address: no need to walk the tree (keeps it responsive).
+        if (out.any { URL_LIKE.matches(it.text?.toString()?.trim()?.lowercase().orEmpty()) }) return out
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < 500) {
+            val node = stack.removeLast()
+            seen++
+            val id = node.viewIdResourceName?.lowercase()
+            val looksLikeBar = id != null && ADDRESS_ID_HINTS.any { id.contains(it) }
+            val t = node.text?.toString()
+            val d = node.contentDescription?.toString()
+            val looksLikeUrl = (t != null && URL_LIKE.matches(t.trim().lowercase())) ||
+                (d != null && URL_LIKE.matches(d.trim().lowercase()))
+            if ((looksLikeBar || node.isEditable) && !t.isNullOrBlank()) out.add(node)
+            else if (looksLikeUrl) out.add(node)
+            // Don't descend into the web page itself here; that is read separately.
+            if (isWebContent(node)) continue
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return out
+    }
+
+    /** Text shaped like a web address ("idp.e-kreta.hu/...", "https://x.com"), no spaces. */
+    private val URL_LIKE = Regex("^(https?://)?([a-z0-9-]+\\.)+[a-z]{2,}(:[0-9]+)?(/\\S*)?$")
+
+    private val ADDRESS_ID_HINTS = listOf(
+        "url", "address", "omnibox", "location", "search_box", "searchbox", "search_edit",
+        "search_src", "titlebar", "title_bar", "toolbar_text", "query"
+    )
+
+    /**
+     * In-app browsers (links opened inside Gmail, Messenger, Discord, Snapchat, news apps...)
+     * render in a WebView. If any app shows one, its page is read and closed when explicit.
+     */
+    private fun checkInAppWebView(pkg: String) {
+        if (pkg in NON_WEB || pkg.contains("launcher") || pkg.contains("inputmethod") ||
+            pkg.contains("keyboard") || isSchoolApp(pkg)
+        ) return
+        val now = SystemClock.uptimeMillis()
+        if (now - (lastCheck[pkg] ?: 0L) < 300 || now - lastAction < 600) return
+        lastCheck[pkg] = now
+        try {
+            val root = rootInActiveWindow ?: return
+            if (root.packageName?.toString() != pkg) return
+            val web = findWebView(root) ?: return
+            val text = collectText(web, limit = 1000)
+            if (Blocklist.isExplicitContent(text) || FEED_GATES.any { text.contains(it) } ||
+                (text.contains("reddit") && Blocklist.isRedditNsfw(text))
+            ) {
+                val g = FEED_GATES.firstOrNull { text.contains(it) }
+                blockPage(
+                    getString(R.string.page_blocked),
+                    "in-app · $pkg · ${g ?: if (text.contains("reddit")) "reddit" else Blocklist.explain(text)}"
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /** A rendered web page: Android WebView (Chrome engine) or GeckoView (Firefox engine). */
+    private fun isWebContent(node: AccessibilityNodeInfo): Boolean {
+        val c = node.className?.toString() ?: return false
+        return c.contains("WebView") || c.contains("GeckoView", ignoreCase = true)
+    }
+
+    private val SYSTEM_UI = "com.android.systemui"
+
+    /** "Turn off notifications" controls shown when a notification is long-pressed / swiped. */
+    private val SHADE_DANGER = listOf(
+        "turn off notifications", "stop notifications", "don't show notifications",
+        "dont show notifications", "block notifications", "disable notifications",
+        "értesítések kikapcsolása", "ertesitesek kikapcsolasa", "értesítések letiltása",
+        "ertesitesek letiltasa", "ne jelenjenek meg", "értesítések leállítása",
+        "ertesitesek leallitasa"
+    )
+
+    /**
+     * The notification shade: long-pressing or swiping LCKDN's notification offers to turn its
+     * notifications off (which lets the phone kill the filter). Close those controls.
+     */
+    private fun checkNotificationShade() {
+        val now = SystemClock.uptimeMillis()
+        if (now - (lastCheck[SYSTEM_UI] ?: 0L) < 200) return
+        lastCheck[SYSTEM_UI] = now
+        try {
+            val root = rootInActiveWindow ?: return
+            if (root.packageName?.toString() != SYSTEM_UI) return
+            val labels = root.findAccessibilityNodeInfosByText("LCKDN").orEmpty()
+            if (labels.none { it.isVisibleToUser }) return
+            val text = collectText(root, limit = 400)
+            if (SHADE_DANGER.any { text.contains(it) }) {
+                lastAction = now
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                toast(getString(R.string.tamper_blocked))
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private val schoolAppCache = HashMap<String, Boolean>()
+
+    /**
+     * e-KRÉTA school apps (official and the Filc / reFilc clients). Their built-in login page is
+     * the trusted school system, so it is not scanned. Recognised by package or by the app's
+     * name on the phone. Only in-app pages of these apps; browsers are filtered as always.
+     */
+    private fun isSchoolApp(pkg: String): Boolean = schoolAppCache.getOrPut(pkg) {
+        if (pkg.contains("kreta") || pkg.contains("filc")) return@getOrPut true
+        val label = try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            ""
+        }
+        val l = java.text.Normalizer.normalize(label.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+        l.contains("kreta") || l.contains("filc")
+    }
+
+    private fun findWebView(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < 400) {
+            val node = stack.removeLast()
+            seen++
+            if (isWebContent(node) && node.isVisibleToUser) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return null
+    }
+
+    /**
+     * Every installed app that opens any web address is a browser, and is filtered like one.
+     */
+    private fun scanBrowsers() {
+        lastBrowserScan = SystemClock.uptimeMillis()
+        try {
+            val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://lckdn-probe.example/"))
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+            val found = packageManager.queryIntentActivities(probe, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName }
+                .filter {
+                    it != packageName && it !in BROWSERS && it !in SETTINGS && it != "android" &&
+                        it != YOUTUBE && it != INSTAGRAM && it !in FACEBOOK && it !in FEED_APPS &&
+                        !it.contains("intentresolver") && !it.contains("resolver")
+                }
+                .toSet()
+            otherBrowsers = found
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun checkTamper(root: AccessibilityNodeInfo) {
+        if (guardPowerSave(root)) return
+        val text = collectText(root)
+        val aboutUs = text.contains("lckdn")
+
+        // Autostart / background / battery pages that show LCKDN.
+        //  - A list of many apps: only LCKDN's row is covered, so other apps stay settable. The
+        //    cover only comes off when LCKDN's switch is definitely OFF (to turn it back on).
+        //  - Anything else (LCKDN's own app-info / battery page, unknown layouts): closed.
+        //  - The one exception: the "let LCKDN run in background" prompt that LCKDN itself opens
+        //    from its setup screen (a dialog with no switches), for 30 seconds.
+        if (aboutUs && BACKGROUND_PAGES.any { text.contains(it) }) {
+            val switches = countCheckables(root)
+            val row = lckdnRow(root)
+            if (switches >= 3 && row != null && row.listRow) {
+                if (row.switchOn == false) rowCover?.hide()
+                else rowCover?.show(root.packageName?.toString() ?: "settings", row.bounds, 0xFF000000.toInt())
+                return
+            } else {
+                rowCover?.hide()
+                val ownPrompt = switches == 0 && Prefs.settingsGrantActive(this)
+                if (!ownPrompt) {
+                    lastAction = SystemClock.uptimeMillis()
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    toast(getString(R.string.tamper_blocked))
+                    return
+                }
+            }
+        } else {
+            rowCover?.hide()
+        }
+
+        if (aboutUs && DANGER.any { text.contains(it) }) {
+            // Dismiss the dialog and leave to the home screen, immediately.
+            lastAction = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(getString(R.string.tamper_blocked))
+            return
+        }
+        // Second space, dual apps, extra users / guests and work profiles run outside the filter.
+        if (SPACE_PAGES.any { text.contains(it) }) {
+            lastAction = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(getString(R.string.space_blocked))
+            return
+        }
+        // A custom Private DNS hostname would route lookups around the filter.
+        if (text.contains("private dns provider hostname") || text.contains("private dns hostname")) {
+            act(GLOBAL_ACTION_BACK, getString(R.string.tamper_blocked))
+        }
+    }
+
+    /**
+     * Battery-saver pages: closed on sight. Returns true if the page was closed. Needs no mention
+     * of LCKDN on the page, because the system-wide power-saving screens never show it.
+     */
+    private fun guardPowerSave(root: AccessibilityNodeInfo): Boolean {
+        val hit = POWER_SAVE_TERMS.any { term ->
+            root.findAccessibilityNodeInfosByText(term).orEmpty().any { it.isVisibleToUser }
+        }
+        if (!hit) return false
+        rowCover?.hide()
+        lastAction = SystemClock.uptimeMillis()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        toast(getString(R.string.tamper_blocked))
+        return true
+    }
+
+    /**
+     * Quick-settings / Control Center: covers the battery-saver tile so it can't be tapped.
+     * Only the tile is covered; the rest of the panel keeps working.
+     */
+    private fun checkShadeTiles() {
+        val c = rowCover ?: return
+        val now = SystemClock.uptimeMillis()
+        if (now - (lastCheck["shade_tiles"] ?: 0L) < 200) return
+        lastCheck["shade_tiles"] = now
+        try {
+            val root = rootInActiveWindow ?: return
+            if (root.packageName?.toString() != SYSTEM_UI) return
+            val maxTile = resources.displayMetrics.heightPixels / 6
+            val rect = Rect()
+            for (term in POWER_SAVE_TERMS) {
+                val node = root.findAccessibilityNodeInfosByText(term).orEmpty()
+                    .firstOrNull { it.isVisibleToUser } ?: continue
+                var cur: AccessibilityNodeInfo = node
+                var target: AccessibilityNodeInfo? = null
+                for (level in 0 until 4) {
+                    cur.getBoundsInScreen(rect)
+                    if (rect.height() >= maxTile) break
+                    if (cur.isClickable || cur.isLongClickable) target = cur
+                    cur = cur.parent ?: break
+                }
+                val bounds = Rect()
+                (target ?: node).getBoundsInScreen(bounds)
+                c.show(SYSTEM_UI, bounds, 0xFF000000.toInt())
+                return
+            }
+            if (c.coveredPackage == SYSTEM_UI) c.hide()
+        } catch (_: Exception) {
+        }
+    }
+
+    private data class RowInfo(val bounds: Rect, val switchOn: Boolean?, val listRow: Boolean)
+
+    /**
+     * LCKDN's row on a settings screen: its bounds, the state of the switch in it (null if
+     * none), and whether it is a row in a list of apps (as opposed to LCKDN's own page).
+     */
+    private fun lckdnRow(root: AccessibilityNodeInfo): RowInfo? {
+        val screenH = resources.displayMetrics.heightPixels
+        val maxRow = screenH / 4
+        val rect = Rect()
+        for (label in root.findAccessibilityNodeInfosByText("LCKDN").orEmpty()) {
+            if (!label.isVisibleToUser) continue
+            var state: Boolean? = null
+            var rowNode: AccessibilityNodeInfo? = null
+            var cur: AccessibilityNodeInfo = label
+            for (level in 0 until 4) {
+                val parent = cur.parent ?: break
+                parent.getBoundsInScreen(rect)
+                if (rect.height() >= maxRow) break  // reached the whole list: stop
+                cur = parent
+                if (rowNode == null && cur.isClickable) rowNode = cur
+                val control = findCheckable(cur, 60)
+                if (control != null) {
+                    state = control.isChecked
+                    rowNode = cur
+                    break
+                }
+            }
+            val target = rowNode ?: label
+            val bounds = Rect()
+            target.getBoundsInScreen(bounds)
+            return RowInfo(bounds, state, rowNode != null && bounds.height() in 1 until maxRow)
+        }
+        return null
+    }
+
+    /** Number of visible switches / checkboxes / radio buttons on screen (bounded). */
+    private fun countCheckables(root: AccessibilityNodeInfo): Int {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        var count = 0
+        while (stack.isNotEmpty() && seen < 800) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isCheckable && node.isVisibleToUser) count++
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return count
+    }
+
+    private fun findCheckable(start: AccessibilityNodeInfo, limit: Int): AccessibilityNodeInfo? {
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(start)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < limit) {
+            val node = stack.removeLast()
+            seen++
+            if (node.isCheckable) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return null
+    }
+
+    /** Lower-cased text + content descriptions of the visible tree (bounded). */
+    private fun collectText(root: AccessibilityNodeInfo, limit: Int = 600): String {
+        val sb = StringBuilder()
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        var seen = 0
+        while (stack.isNotEmpty() && seen < limit) {
+            val node = stack.removeLast()
+            seen++
+            node.text?.let { sb.append(it).append('\n') }
+            node.contentDescription?.let { sb.append(it).append('\n') }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { stack.addLast(it) }
+        }
+        return sb.toString().lowercase()
+    }
+
+    private fun act(action: Int, message: String) {
+        lastAction = SystemClock.uptimeMillis()
+        performGlobalAction(action)
+        toast(message)
+    }
+
+    /** Black the screen out first (so nothing can be seen), then leave the page. */
+    private fun blockPage(reason: String, why: String = "") {
+        lastAction = SystemClock.uptimeMillis()
+        censor?.flash()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        showBlocked(reason, why)
+    }
+
+    private fun showBlocked(reason: String, why: String = "") {
+        lastAction = SystemClock.uptimeMillis()
+        censor?.flash()   // instantly black out the screen before anything else can be seen
+        try {
+            startActivity(
+                Intent(this, BlockedActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(BlockedActivity.EXTRA_REASON, reason)
+                    .putExtra(BlockedActivity.EXTRA_DETAIL, why)
+            )
+        } catch (_: Exception) {
+            toast(reason)
+        }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+}
