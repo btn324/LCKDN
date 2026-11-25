@@ -3,6 +3,7 @@ package com.lckdn.app.guard
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.view.Gravity
@@ -19,18 +20,25 @@ class TabCover(private val service: AccessibilityService) {
     private val wm = service.getSystemService(WindowManager::class.java)
     private var view: View? = null
     private val shown = Rect()
+    private var shownInvisible = false
 
     /** Package whose tab is currently covered, or null. */
     var coveredPackage: String? = null
         private set
 
     @SuppressLint("ClickableViewAccessibility")
-    fun show(pkg: String, bounds: Rect, darkColor: Int) {
+    fun show(pkg: String, bounds: Rect, darkColor: Int, invisible: Boolean = false) {
         if (bounds.isEmpty) {
             hide()
             return
         }
-        val color = if (isNight()) darkColor else LIGHT
+        // Switching between a visible and an invisible panel needs a fresh window.
+        if (view != null && shownInvisible != invisible) hide()
+        val color = when {
+            invisible -> Color.TRANSPARENT
+            isNight() -> darkColor
+            else -> LIGHT
+        }
         val current = view
         if (current != null && coveredPackage == pkg && shown == bounds) return
 
@@ -41,7 +49,7 @@ class TabCover(private val service: AccessibilityService) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.OPAQUE
+            if (invisible) PixelFormat.TRANSLUCENT else PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = bounds.left
@@ -62,6 +70,7 @@ class TabCover(private val service: AccessibilityService) {
                 wm.updateViewLayout(current, lp)
             }
             shown.set(bounds)
+            shownInvisible = invisible
             coveredPackage = pkg
         } catch (_: Exception) {
             hide()
@@ -77,6 +86,7 @@ class TabCover(private val service: AccessibilityService) {
         }
         view = null
         shown.setEmpty()
+        shownInvisible = false
         coveredPackage = null
     }
 
