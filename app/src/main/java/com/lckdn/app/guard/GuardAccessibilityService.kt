@@ -1,14 +1,19 @@
 package com.lckdn.app.guard
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -163,6 +168,7 @@ class GuardAccessibilityService : AccessibilityService() {
             "com.google.android.permissioncontroller", "com.android.permissioncontroller",
             // Xiaomi / POCO HyperOS & MIUI
             "com.miui.securitycenter", "com.miui.packageinstaller",
+            "com.miui.powerkeeper", "com.miui.powercenter",
             "com.xiaomi.market", "com.miui.cleanmaster", "com.miui.guardprovider",
             // Samsung, Oppo/Realme/OnePlus, Vivo, Huawei
             "com.samsung.android.lool", "com.samsung.android.packageinstaller",
@@ -267,12 +273,43 @@ class GuardAccessibilityService : AccessibilityService() {
     @Volatile private var otherBrowsers: Set<String> = emptySet()
     private var lastBrowserScan = 0L
 
+    /** Battery saver / power-saving mode was switched on: try to switch it straight back off. */
+    private val powerSaveReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            revertPowerSave()
+        }
+    }
+
+    /**
+     * Turns battery saver back off while locked in. Needs the one-time permission
+     * WRITE_SECURE_SETTINGS (granted over adb); without it this does nothing and the settings
+     * page / tile blocks remain the protection. Best effort: some OEM "ultra" modes use their
+     * own switch rather than Android's standard one.
+     */
+    private fun revertPowerSave() {
+        if (!Prefs.isLocked(this)) return
+        val on = try {
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
+        } catch (_: Exception) {
+            false
+        }
+        if (!on) return
+        try {
+            Settings.Global.putInt(contentResolver, "low_power", 0)
+        } catch (_: Exception) {
+        }
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        toast(getString(R.string.tamper_blocked))
+    }
+
     private val watchdog = object : Runnable {
         override fun run() {
             Protection.ensureRunning(this@GuardAccessibilityService)
+            revertPowerSave()
             Notifications.refreshStatusIfDue(this@GuardAccessibilityService)
             if (SystemClock.uptimeMillis() - lastBrowserScan > 60_000) scanBrowsers()
-            handler.postDelayed(this, 10_000)
+            // Check far more often while a battery-saver mode is on.
+            handler.postDelayed(this, if (Prefs.powerSaving(this@GuardAccessibilityService)) 2_000L else 10_000L)
         }
     }
 
@@ -281,6 +318,10 @@ class GuardAccessibilityService : AccessibilityService() {
         cover = TabCover(this)
         censor = CensorOverlay(this)
         rowCover = TabCover(this)
+        try {
+            registerReceiver(powerSaveReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        } catch (_: Exception) {
+        }
         scanBrowsers()
         handler.removeCallbacks(watchdog)
         handler.post(watchdog)
@@ -288,6 +329,10 @@ class GuardAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(watchdog)
+        try {
+            unregisterReceiver(powerSaveReceiver)
+        } catch (_: Exception) {
+        }
         cover?.hide()
         censor?.hide()
         rowCover?.hide()
@@ -392,7 +437,7 @@ class GuardAccessibilityService : AccessibilityService() {
                 rootPkg == INSTAGRAM && Prefs.flag(this, Prefs.BLOCK_REELS) && !shortsReelsAllowedNow() ->
                     // clips_* ids only. No "reel" content fallback here, since Instagram Stories
                     // are also internally "reels" and must stay usable.
-                    if (hasVisibleId(root, IG_REELS_IDS)) {
+                    if (hasFullScreenId(root, IG_REELS_IDS)) {
                         act(GLOBAL_ACTION_BACK, getString(R.string.reels_blocked))
                     } else {
                         checkFeedApp(root)
@@ -554,6 +599,23 @@ class GuardAccessibilityService : AccessibilityService() {
         if (!com.lckdn.app.Holidays.isSchoolDay(java.time.LocalDate.now())) return false
         val now = java.time.LocalTime.now()
         return !now.isBefore(java.time.LocalTime.of(7, 0)) && !now.isAfter(java.time.LocalTime.of(14, 10))
+    }
+
+    /**
+     * Like [hasVisibleId], but only counts a view that fills most of the screen. A real Reels
+     * viewer is full-screen; a small Reel preview inside the feed, Stories or a DM is not, so
+     * those no longer kick you out of the app.
+     */
+    private fun hasFullScreenId(root: AccessibilityNodeInfo, ids: List<String>): Boolean {
+        val minHeight = resources.displayMetrics.heightPixels * 0.6f
+        val rect = Rect()
+        return ids.any { id ->
+            root.findAccessibilityNodeInfosByViewId(id)?.any { node ->
+                if (!node.isVisibleToUser) return@any false
+                node.getBoundsInScreen(rect)
+                rect.height() > minHeight
+            } == true
+        }
     }
 
     private fun hasVisibleId(root: AccessibilityNodeInfo, ids: List<String>): Boolean =
@@ -891,8 +953,8 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Quick-settings / Control Center: covers the battery-saver tile so it can't be tapped.
-     * Only the tile is covered; the rest of the panel keeps working.
+     * Quick-settings / Control Center: puts an invisible, tap-swallowing panel over the
+     * battery-saver tile, so it looks normal but does nothing. The rest of the panel works.
      */
     private fun checkShadeTiles() {
         val c = rowCover ?: return
@@ -917,7 +979,7 @@ class GuardAccessibilityService : AccessibilityService() {
                 }
                 val bounds = Rect()
                 (target ?: node).getBoundsInScreen(bounds)
-                c.show(SYSTEM_UI, bounds, 0xFF000000.toInt())
+                c.show(SYSTEM_UI, bounds, 0, invisible = true)
                 return
             }
             if (c.coveredPackage == SYSTEM_UI) c.hide()
