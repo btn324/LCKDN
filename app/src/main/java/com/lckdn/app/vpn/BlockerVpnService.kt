@@ -195,7 +195,10 @@ class BlockerVpnService : VpnService() {
         val query = pkt.copyOfRange(ihl + 8, end)
         val name = Packets.dnsQuestionName(query) ?: return
 
-        if (Blocklist.isBlockedDomain(name, Prefs.flag(this, Prefs.BLOCK_ADS))) {
+        // Battery saver can freeze or switch off the guards, so while it is on and LCKDN is locked
+        // in, every name is refused: the internet stays off until battery saver is turned off.
+        val powerSaveLockdown = Prefs.isLocked(this) && Prefs.powerSaving(this)
+        if (powerSaveLockdown || Blocklist.isBlockedDomain(name, Prefs.flag(this, Prefs.BLOCK_ADS))) {
             val resp = Packets.dnsBlockedResponse(query) ?: return
             write(Packets.udpReply(pkt, ihl, resp))
             return
