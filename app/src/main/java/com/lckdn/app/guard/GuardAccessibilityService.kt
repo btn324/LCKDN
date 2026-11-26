@@ -219,6 +219,19 @@ class GuardAccessibilityService : AccessibilityService() {
             "takarekos mod"
         )
 
+        /**
+         * Hints in a window's package or class name that identify a battery-saver / power-saving
+         * screen in ANY language and on any phone (Xiaomi "Ultra battery saver", Samsung "Maximum
+         * power saving", stock "Battery Saver"...). Any such window is closed on sight.
+         */
+        val POWER_SAVE_WINDOW_HINTS = listOf(
+            "powersave", "power_save", "powersaver", "power_saver", "powersaving", "power_saving",
+            "batterysaver", "battery_saver", "batterysaving", "battery_saving", "extremepower",
+            "extreme_power", "ultrapower", "ultra_power", "ultrabattery", "ultra_battery",
+            "superpower", "super_power", "lowpower", "low_power", "savemode", "save_mode",
+            "powerkeeper", "powercenter", "powermanager", "powermode", "power_mode"
+        )
+
         val DANGER = listOf(
             // English
             "force stop", "uninstall", "deactivate", "turn off", "clear storage", "clear data",
@@ -366,6 +379,15 @@ class GuardAccessibilityService : AccessibilityService() {
         }
 
         if (pkg == packageName) return
+        if (pkg != SYSTEM_UI && isPowerSaveWindow(pkg, event)) {
+            // No cooldown, no text needed: the window's own name gives it away.
+            rowCover?.hide()
+            lastAction = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(getString(R.string.tamper_blocked))
+            return
+        }
         if (pkg == SYSTEM_UI) {
             checkShadeTiles()
             checkNotificationShade()
@@ -514,6 +536,13 @@ class GuardAccessibilityService : AccessibilityService() {
             if (inBottomBar && tabSized) return r
         }
         return null
+    }
+
+    /** A battery-saver / power-saving screen, recognised by its package or window class name. */
+    private fun isPowerSaveWindow(pkg: String, event: AccessibilityEvent): Boolean {
+        val name = (pkg + "/" + (event.className?.toString() ?: "")).lowercase()
+        // Our own settings-related apps and the launcher/keyboard are never power-saver screens.
+        return POWER_SAVE_WINDOW_HINTS.any { name.contains(it) }
     }
 
     private fun isInteresting(pkg: String) =
