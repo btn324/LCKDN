@@ -982,39 +982,33 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Quick-settings / Control Center: puts an invisible, tap-swallowing panel over the
-     * battery-saver tile, so it looks normal but does nothing. The rest of the panel works.
+     * Quick-settings / Control Center: the moment a battery-saver tile is on screen, the whole
+     * panel is closed. Covering only the tile was not enough, because while the panel is being
+     * swiped the tile moves and the cover lands in the wrong place, so a tap got through.
+     * Trade-off: the Control Center cannot be used while locked in if it shows such a tile.
      */
     private fun checkShadeTiles() {
-        val c = rowCover ?: return
         val now = SystemClock.uptimeMillis()
-        if (now - (lastCheck["shade_tiles"] ?: 0L) < 200) return
+        if (now - (lastCheck["shade_tiles"] ?: 0L) < 40) return
         lastCheck["shade_tiles"] = now
         try {
             val root = rootInActiveWindow ?: return
             if (root.packageName?.toString() != SYSTEM_UI) return
-            val maxTile = resources.displayMetrics.heightPixels / 6
-            val rect = Rect()
-            for (term in POWER_SAVE_TERMS) {
-                val node = root.findAccessibilityNodeInfosByText(term).orEmpty()
-                    .firstOrNull { it.isVisibleToUser } ?: continue
-                var cur: AccessibilityNodeInfo = node
-                var target: AccessibilityNodeInfo? = null
-                for (level in 0 until 4) {
-                    cur.getBoundsInScreen(rect)
-                    if (rect.height() >= maxTile) break
-                    if (cur.isClickable || cur.isLongClickable) target = cur
-                    cur = cur.parent ?: break
-                }
-                val bounds = Rect()
-                (target ?: node).getBoundsInScreen(bounds)
-                c.show(SYSTEM_UI, bounds, 0, invisible = true)
-                return
+            val hit = POWER_SAVE_TERMS.any { term ->
+                root.findAccessibilityNodeInfosByText(term).orEmpty().any { it.isVisibleToUser }
             }
-            if (c.coveredPackage == SYSTEM_UI) c.hide()
+            if (!hit) return
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            if (now - lastShadeToast > 3_000) {
+                lastShadeToast = now
+                toast(getString(R.string.tamper_blocked))
+            }
         } catch (_: Exception) {
         }
     }
+
+    private var lastShadeToast = 0L
 
     private data class RowInfo(val bounds: Rect, val switchOn: Boolean?, val listRow: Boolean)
 
