@@ -981,11 +981,22 @@ class GuardAccessibilityService : AccessibilityService() {
         return true
     }
 
+    /** True once WRITE_SECURE_SETTINGS has been granted over adb, so battery saver can be undone. */
+    private fun canRevertPowerSave(): Boolean = try {
+        checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
+            PackageManager.PERMISSION_GRANTED
+    } catch (_: Exception) {
+        false
+    }
+
     /**
-     * Quick-settings / Control Center: the moment a battery-saver tile is on screen, the whole
-     * panel is closed. Covering only the tile was not enough, because while the panel is being
-     * swiped the tile moves and the cover lands in the wrong place, so a tap got through.
-     * Trade-off: the Control Center cannot be used while locked in if it shows such a tile.
+     * Quick-settings / Control Center and the battery-saver tile.
+     *
+     * With the adb grant (battery saver can be switched straight back off): an invisible,
+     * tap-swallowing panel follows the tile, re-placed every ~40 ms so it keeps up while the
+     * panel is swiped, and the rest of the Control Center works normally.
+     *
+     * Without the grant there is no way to undo a tap, so the whole panel is closed instead.
      */
     private fun checkShadeTiles() {
         val now = SystemClock.uptimeMillis()
@@ -994,16 +1005,35 @@ class GuardAccessibilityService : AccessibilityService() {
         try {
             val root = rootInActiveWindow ?: return
             if (root.packageName?.toString() != SYSTEM_UI) return
-            val hit = POWER_SAVE_TERMS.any { term ->
-                root.findAccessibilityNodeInfosByText(term).orEmpty().any { it.isVisibleToUser }
+            val c = rowCover
+            val maxTile = resources.displayMetrics.heightPixels / 6
+            val rect = Rect()
+            for (term in POWER_SAVE_TERMS) {
+                val node = root.findAccessibilityNodeInfosByText(term).orEmpty()
+                    .firstOrNull { it.isVisibleToUser } ?: continue
+                if (c == null || !canRevertPowerSave()) {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    if (now - lastShadeToast > 3_000) {
+                        lastShadeToast = now
+                        toast(getString(R.string.tamper_blocked))
+                    }
+                    return
+                }
+                var cur: AccessibilityNodeInfo = node
+                var target: AccessibilityNodeInfo? = null
+                for (level in 0 until 4) {
+                    cur.getBoundsInScreen(rect)
+                    if (rect.height() >= maxTile) break
+                    if (cur.isClickable || cur.isLongClickable) target = cur
+                    cur = cur.parent ?: break
+                }
+                val bounds = Rect()
+                (target ?: node).getBoundsInScreen(bounds)
+                c.show(SYSTEM_UI, bounds, 0, invisible = true)
+                return
             }
-            if (!hit) return
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            if (now - lastShadeToast > 3_000) {
-                lastShadeToast = now
-                toast(getString(R.string.tamper_blocked))
-            }
+            if (rowCover?.coveredPackage == SYSTEM_UI) rowCover?.hide()
         } catch (_: Exception) {
         }
     }
