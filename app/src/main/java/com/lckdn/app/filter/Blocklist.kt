@@ -165,6 +165,15 @@ object Blocklist {
         "slutsk", "clitheroe", "nudelsupp"
     ).map { fold(it) }
 
+    /**
+     * Innocent words that are excused ONLY when they stand alone as a whole word (not glued to
+     * more letters or digits), unlike [keywordExceptions], which excuse any longer word that
+     * merely contains them. "fasza" is everyday Hungarian slang for "great / cool"; it matched
+     * both "fasz" and "fasza" and so tripped the two-hit rule on its own. Inflected vulgar
+     * forms such as "faszat" or "faszan" are NOT excused and still count.
+     */
+    private val wholeWordExceptions = listOf("fasza").map { fold(it) }
+
     /** DNS-over-HTTPS / DoT endpoints and canaries that would let browsers bypass the filter. */
     private val bypassDomains = hashSetOf(
         "use-application-dns.net", "dns.google", "dns.google.com", "8888.google",
@@ -443,6 +452,18 @@ object Blocklist {
             var i = text.indexOf(ex)
             while (i >= 0) {
                 if (start >= i && start + len <= i + ex.length) return true
+                i = text.indexOf(ex, i + 1)
+            }
+        }
+        for (ex in wholeWordExceptions) {
+            var i = text.indexOf(ex)
+            while (i >= 0) {
+                val end = i + ex.length
+                val before = if (i == 0) ' ' else text[i - 1]
+                val after = if (end >= text.length) ' ' else text[end]
+                if (!before.isLetterOrDigit() && !after.isLetterOrDigit() &&
+                    start >= i && start + len <= end
+                ) return true
                 i = text.indexOf(ex, i + 1)
             }
         }
