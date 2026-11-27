@@ -79,6 +79,14 @@ class BlockerVpnService : VpnService() {
     }
 
     private var tun: ParcelFileDescriptor? = null
+
+    /**
+     * Counts tunnels. A reader thread from an OLD tunnel used to clear the shared `running`
+     * flag when it finally exited, even if a NEW tunnel had been set up in the meantime (easy
+     * to hit when battery saver freezes the app and it is restarted). The new tunnel then had
+     * a VPN key icon but nobody reading it, so filtering silently stopped.
+     */
+    @Volatile private var generation = 0
     private var output: FileOutputStream? = null
     private var worker: Thread? = null
     private val writeLock = Any()
@@ -114,6 +122,8 @@ class BlockerVpnService : VpnService() {
     @Synchronized
     private fun establish() {
         if (tun != null && running) return
+        // A tunnel that exists but whose reader has died is useless: tear it down and rebuild.
+        if (tun != null) shutdown()
         val configure = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
@@ -155,16 +165,17 @@ class BlockerVpnService : VpnService() {
         if (pool.isShutdown) pool = Executors.newFixedThreadPool(8)
         tun = iface
         output = FileOutputStream(iface.fileDescriptor)
+        val gen = ++generation
         running = true
         Notifications.clearInterrupted(this)
-        worker = Thread({ readLoop(iface) }, "lckdn-dns").also { it.start() }
+        worker = Thread({ readLoop(iface, gen) }, "lckdn-dns").also { it.start() }
     }
 
-    private fun readLoop(iface: ParcelFileDescriptor) {
+    private fun readLoop(iface: ParcelFileDescriptor, gen: Int) {
         val input = FileInputStream(iface.fileDescriptor)
         val buf = ByteArray(32767)
         try {
-            while (running) {
+            while (running && generation == gen) {
                 val n = input.read(buf)
                 if (n <= 0) continue
                 val pkt = buf.copyOf(n)
@@ -177,7 +188,8 @@ class BlockerVpnService : VpnService() {
         } catch (_: IOException) {
             // Interface closed.
         } finally {
-            running = false
+            // Only the CURRENT tunnel's reader may mark the filter as stopped.
+            if (generation == gen) running = false
         }
     }
 
@@ -247,6 +259,7 @@ class BlockerVpnService : VpnService() {
 
     @Synchronized
     private fun shutdown() {
+        generation++
         running = false
         try {
             tun?.close()
